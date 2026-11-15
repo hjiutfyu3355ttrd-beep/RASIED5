@@ -1,0 +1,80 @@
+{
+  "id": "/",
+  "name": "نظام السيارات",
+  "short_name": "السيارات",
+  "description": "إدارة السيارات والشركاء: المصروفات والدخل والمديونيات وأرباح الشركاء",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "./index.html?source=pwa",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f3f5fa",
+  "theme_color": "#063e39",
+  "categories": [
+    "business",
+    "finance",
+    "productivity"
+  ],
+  "icons": [
+    {
+      "src": "assets/img/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/img/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/img/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "assets/img/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "التنبيهات",
+      "short_name": "التنبيهات",
+      "url": "./notifications.html?source=shortcut",
+      "icons": [
+        {
+          "src": "assets/img/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "مصروف جديد",
+      "short_name": "مصروف",
+      "url": "./expenses.html?source=shortcut",
+      "icons": [
+        {
+          "src": "assets/img/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "الأقساط",
+      "short_name": "الأقساط",
+      "url": "./installments.html?source=shortcut",
+      "icons": [
+        {
+          "src": "assets/img/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+}
