@@ -2,9 +2,11 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8" />
+  <meta name="view-transition" content="same-origin" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5" />
   <title>مصروفات المشاريع — نظام المشاريع</title>
-  <link rel="stylesheet" href="css/style.css?v=4" />
+  <link rel="stylesheet" href="css/style.css?v=5" />
+  <link rel="icon" href="favicon.ico" sizes="any" />
   <link rel="icon" href="assets/img/icon-192.png" type="image/png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#182763" />
@@ -15,15 +17,16 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 </head>
 <body data-page="project-expenses">
+  <div id="app"><div class="empty" style="padding:48px 20px;text-align:center;color:#667391">جارٍ التحميل…</div></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-  <script src="js/config.js?v=4"></script>
-  <script src="js/db.js?v=4"></script>
-  <script src="js/notify.js?v=4"></script>
-  <script src="js/ui.js?v=4"></script>
-  <script src="js/xlsx-lite.js?v=4"></script>
-  <script src="js/charts.js?v=4"></script>
-  <script src="js/crud.js?v=4"></script>
-  <script src="js/ledger.js?v=4"></script>
-  <script defer src="js/pwa.js?v=4"></script>
+  <script src="js/config.js?v=5"></script>
+  <script src="js/db.js?v=5"></script>
+  <script src="js/notify.js?v=5"></script>
+  <script src="js/ui.js?v=5"></script>
+  <script src="js/xlsx-lite.js?v=5"></script>
+  <script src="js/charts.js?v=5"></script>
+  <script src="js/crud.js?v=5"></script>
+  <script src="js/ledger.js?v=5"></script>
+  <script defer src="js/pwa.js?v=5"></script>
 </body>
 </html>

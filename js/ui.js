@@ -91,29 +91,43 @@
   };
 
   var NAV = [
-    { key: "dashboard", label: "لوحة التحكم", icon: "dashboard" },
-    { key: "projects", label: "المشاريع", icon: "projects" },
-    { key: "engineers", label: "المهندسون", icon: "engineers" },
-    { key: "suppliers", label: "الموردون", icon: "suppliers" },
-    { key: "items", label: "الأصناف", icon: "items" },
-    { key: "warehouses", label: "المخازن", icon: "warehouses" },
-    { key: "cashboxes", label: "الخزائن", icon: "cashboxes" },
-    { key: "cash-movements", label: "حركات الخزينة", icon: "payments" },
-    { key: "expense-types", label: "أنواع المصروفات", icon: "expenses" },
-    { key: "purchases", label: "فواتير المشتريات", icon: "purchases" },
-    { key: "stock", label: "حركات المخزون", icon: "stock" },
-    { key: "supplier-payments", label: "مدفوعات الموردين", icon: "payments" },
-    { key: "project-invoices", label: "فواتير المشاريع", icon: "invoices" },
-    { key: "receipts", label: "مقبوضات العملاء", icon: "receipts" },
-    { key: "project-expenses", label: "مصروفات المشاريع", icon: "expenses" },
-    { key: "labor", label: "العمالة", icon: "labor" },
-    { key: "transports", label: "النقل", icon: "transport" },
-    { key: "storages", label: "التشوين", icon: "storage" },
-    { key: "profits", label: "ربحية المشاريع", icon: "profits" },
-    { key: "reports", label: "التقارير", icon: "reports" },
-    { key: "users", label: "المستخدمون", icon: "users", adminOnly: true },
-    { key: "admin", label: "إدارة المنصة", icon: "shield" },
-    { key: "settings", label: "الإعدادات", icon: "settings" }
+    { group: "الرئيسية", icon: "dashboard", items: [
+      { key: "dashboard", label: "لوحة التحكم", icon: "dashboard" }
+    ]},
+    { group: "المشاريع", icon: "projects", items: [
+      { key: "projects", label: "المشاريع", icon: "projects" },
+      { key: "engineers", label: "المهندسون", icon: "engineers" },
+      { key: "project-invoices", label: "فواتير المشاريع", icon: "invoices" },
+      { key: "receipts", label: "مقبوضات العملاء", icon: "receipts" },
+      { key: "project-expenses", label: "مصروفات المشاريع", icon: "expenses" },
+      { key: "profits", label: "ربحية المشاريع", icon: "profits" }
+    ]},
+    { group: "المشتريات والموردين", icon: "purchases", items: [
+      { key: "purchases", label: "فواتير المشتريات", icon: "purchases" },
+      { key: "suppliers", label: "الموردون", icon: "suppliers" },
+      { key: "supplier-payments", label: "مدفوعات الموردين", icon: "payments" }
+    ]},
+    { group: "المخزون", icon: "stock", items: [
+      { key: "items", label: "الأصناف", icon: "items" },
+      { key: "warehouses", label: "المخازن", icon: "warehouses" },
+      { key: "stock", label: "حركات المخزون", icon: "stock" },
+      { key: "storages", label: "التشوين", icon: "storage" },
+      { key: "transports", label: "النقل", icon: "transport" }
+    ]},
+    { group: "المالية والعمالة", icon: "cashboxes", items: [
+      { key: "cashboxes", label: "الخزائن", icon: "cashboxes" },
+      { key: "cash-movements", label: "حركات الخزينة", icon: "payments" },
+      { key: "expense-types", label: "أنواع المصروفات", icon: "expenses" },
+      { key: "labor", label: "العمالة", icon: "labor" }
+    ]},
+    { group: "التقارير", icon: "reports", items: [
+      { key: "reports", label: "التقارير", icon: "reports" }
+    ]},
+    { group: "النظام", icon: "settings", items: [
+      { key: "users", label: "المستخدمون", icon: "users", adminOnly: true },
+      { key: "admin", label: "إدارة المنصة", icon: "shield" },
+      { key: "settings", label: "الإعدادات", icon: "settings" }
+    ]}
   ];
 
   var TITLES = {
@@ -142,84 +156,377 @@
     settings: ["الإعدادات", ""]
   };
 
-  function navHtml(active) {
-    return NAV.filter(function (n) { return DB.allowed(n.key); }).map(function (n) {
-      var on = n.key === active ? " on" : "";
-      return '<a class="nav' + on + '" href="' + n.key + '.html" data-key="' + n.key + '">' +
-        '<span class="nav-ic">' + (ICON[n.icon] || "") + '</span>' +
-        '<span class="nav-label">' + n.label + '</span></a>';
+  var NAVOPEN_KEY = "project_nav_open";
+  var navOpen = null;
+  try { navOpen = sessionStorage.getItem(NAVOPEN_KEY); } catch (e) {}
+
+  function groupOfKey(key) {
+    for (var i = 0; i < NAV.length; i++) {
+      for (var j = 0; j < NAV[i].items.length; j++) {
+        if (NAV[i].items[j].key === key) return NAV[i].group;
+      }
+    }
+    return null;
+  }
+
+  function filterNav(allowedKeys) {
+    var set = null;
+    if (allowedKeys && allowedKeys.length) {
+      set = {};
+      allowedKeys.forEach(function (k) { set[k] = 1; });
+    }
+    return NAV.map(function (g) {
+      var items = g.items.filter(function (it) {
+        if (set) return !!set[it.key] || it.key === "dashboard";
+        if (window.DB && typeof DB.allowed === "function") {
+          try { return DB.allowed(it.key); } catch (e) { return true; }
+        }
+        return true;
+      });
+      return { group: g.group, icon: g.icon, items: items };
+    }).filter(function (g) { return g.items.length > 0; });
+  }
+
+  function navHtml(active, allowedKeys) {
+    var groups = filterNav(allowedKeys);
+    var activeG = groupOfKey(active);
+    if (!navOpen && activeG) navOpen = activeG;
+    // افتح مجموعة الصفحة الحالية دائماً
+    if (activeG) navOpen = activeG;
+
+    function link(it) {
+      var on = it.key === active ? " active" : "";
+      return '<a class="nav' + on + '" href="' + it.key + '.html" data-key="' + it.key + '"' +
+        (it.key === active ? ' aria-current="page"' : "") + ">" +
+        '<span class="nav-ic">' + (ICON[it.icon] || "") + "</span>" +
+        '<span class="nav-label">' + it.label + "</span></a>";
+    }
+
+    return groups.map(function (g) {
+      // مجموعة بعنصر واحد: رابط مباشر بدون طي
+      if (g.items.length === 1) return link(g.items[0]);
+      var open = g.group === navOpen;
+      return '<div class="nav-sec' + (open ? " open" : "") + '" data-grp="' + g.group + '">' +
+        '<button type="button" class="nav-group" aria-expanded="' + (open ? "true" : "false") + '">' +
+          '<span class="nav-ic">' + (ICON[g.icon] || "") + "</span>" +
+          '<span class="nav-glabel">' + g.group + "</span>" +
+          '<span class="nav-chev">' + (ICON.chev || "") + "</span>" +
+        "</button>" +
+        '<div class="nav-sub"><div class="nav-sub-in">' + g.items.map(link).join("") + "</div></div>" +
+      "</div>";
     }).join("");
   }
 
-  function buildShell(active) {
-    var title = TITLES[active] || [active, ""];
-    var company = {};
-    try { company = DB.getCompany() || {}; } catch (e) {}
-    var brand = esc(company.name || "نظام المشاريع");
-    var prof = (DB.getProfile && DB.getProfile()) || null;
-    var sub = DB.demoMode ? "وضع تجريبي" : esc(prof ? prof.name : "");
+  // ====================================================================
+  // شيل ثابت: يُرسم فورًا من الكاش ثم يُطابَق بعد DB دون إعادة بناء كاملة
+  // ======================================================================
+  var SHELL_KEY = "project_shell_v1";
+  var NAVSCROLL_KEY = "project_nav_scroll";
+  var shell = null; // { active, bound }
 
-    document.body.innerHTML =
-      '<div class="layout" id="layout">' +
-        '<aside class="sidebar" id="sidebar">' +
-          '<div class="brand">' +
-            '<div class="brand-icon">' + ICON.projects + '</div>' +
-            '<div class="brand-text"><b>' + brand + '</b><span>' + sub + '</span></div>' +
-          '</div>' +
-          '<div class="sidebar-search-wrap">' + ICON.search +
-            '<input class="menu-search" id="menu-search" type="search" placeholder="بحث في القائمة…" autocomplete="off" />' +
-          '</div>' +
-          '<nav class="sidebar-nav" id="sidebar-nav">' + navHtml(active) + '</nav>' +
-          '<div class="sidebar-foot">' +
-            '<div class="sidebar-ver"><b>نظام المشاريع</b><span>v' + String((window.APP_CONFIG || {}).APP_VERSION || "0.1") + '</span></div>' +
-          '</div>' +
-        '</aside>' +
-        '<div class="main">' +
-          '<header class="topbar">' +
-            '<button class="menu-btn ghost" id="toggle-nav" type="button" aria-label="القائمة">' + ICON.menu + '</button>' +
-            '<div class="topbar-title"><h1 id="page-h1">' + title[0] + '</h1><p class="sub" id="page-sub">' + title[1] + '</p></div>' +
-            '<div class="topbar-end">' +
-              '<button type="button" class="ghost install-btn" id="install-btn" title="تثبيت التطبيق على جهازك" aria-label="تثبيت التطبيق" hidden>' + ICON.download + '</button>' +
-              '<div class="notif-wrap"><button type="button" class="ghost bell-btn" id="bell-btn" title="التنبيهات" aria-label="التنبيهات">' + ICON.bell + '<span class="notif-badge" id="notif-badge" hidden>0</span></button>' +
-              '<div class="notif-panel card" id="notif-panel" hidden></div></div>' +
-              (DB.demoMode ? "" : '<button type="button" class="ghost" id="logout-btn" title="تسجيل الخروج" aria-label="تسجيل الخروج">' + ICON.logout + '</button>') + '</div>' +
-          '</header>' +
-          '<main class="content" id="page"></main>' +
-        '</div>' +
-      '</div>';
+  function readShellCache() {
+    try { return JSON.parse(localStorage.getItem(SHELL_KEY) || "null"); } catch (e) { return null; }
+  }
+  function writeShellCache(o) {
+    try { localStorage.setItem(SHELL_KEY, JSON.stringify(o)); } catch (e) {}
+  }
+  function clearShellCache() {
+    try { localStorage.removeItem(SHELL_KEY); sessionStorage.removeItem(NAVSCROLL_KEY); } catch (e) {}
+  }
 
+  function saveNavScroll() {
+    var nav = document.getElementById("sidebar-nav");
+    if (!nav) return;
+    try { sessionStorage.setItem(NAVSCROLL_KEY, String(nav.scrollTop)); } catch (e) {}
+  }
+  function restoreNavScroll() {
+    var nav = document.getElementById("sidebar-nav");
+    if (!nav) return;
+    try {
+      var s = sessionStorage.getItem(NAVSCROLL_KEY);
+      if (s != null) nav.scrollTop = Number(s) || 0;
+    } catch (e) {}
+  }
+
+  function bindShellEvents() {
+    if (!shell || shell.bound) return;
+    shell.bound = true;
     var layout = document.getElementById("layout");
     var toggle = document.getElementById("toggle-nav");
     if (toggle) toggle.addEventListener("click", function () {
       layout.classList.toggle("nav-open");
     });
-    layout.addEventListener("click", function (e) {
-      if (e.target === layout) layout.classList.remove("nav-open");
-      if (e.target.closest && e.target.closest("a.nav")) layout.classList.remove("nav-open");
-    });
+    if (layout) {
+      layout.addEventListener("click", function (e) {
+        if (e.target === layout) layout.classList.remove("nav-open");
+        if (e.target.closest && e.target.closest("a.nav")) {
+          saveNavScroll();
+          layout.classList.remove("nav-open");
+        }
+      });
+    }
+    // حفظ تمرير القائمة عند أي تنقل
+    document.addEventListener("click", function (e) {
+      var a = e.target.closest && e.target.closest("a.nav");
+      if (a) saveNavScroll();
+    }, true);
+
     var logout = document.getElementById("logout-btn");
     if (logout) logout.addEventListener("click", function () {
-      DB.signOut().then(function () { location.replace("login.html"); });
+      clearShellCache();
+      if (window.DB && DB.signOut) {
+        DB.signOut().then(function () { location.replace("login.html"); });
+      } else {
+        location.replace("login.html");
+      }
     });
     var inst = document.getElementById("install-btn");
     if (inst) inst.addEventListener("click", function () { if (window.PWA) PWA.install(); });
-    if (window.Notify) Notify.mount();
-    document.dispatchEvent(new Event("shell-ready"));
+    var navEl = document.getElementById("sidebar-nav");
+    if (navEl && !navEl.__grpBound) {
+      navEl.__grpBound = true;
+      navEl.addEventListener("click", function (e) {
+        var b = e.target.closest && e.target.closest(".nav-group");
+        if (!b) return;
+        e.preventDefault();
+        var sec = b.closest(".nav-sec");
+        if (!sec) return;
+        var g = sec.getAttribute("data-grp");
+        var willOpen = !sec.classList.contains("open");
+        // أغلق الباقي وافتح المضغوط فقط (أكورديون)
+        navEl.querySelectorAll(".nav-sec").forEach(function (s) {
+          var on = willOpen && s === sec;
+          s.classList.toggle("open", on);
+          var btn = s.querySelector(".nav-group");
+          if (btn) btn.setAttribute("aria-expanded", on ? "true" : "false");
+        });
+        navOpen = willOpen ? g : null;
+        try { if (navOpen) sessionStorage.setItem(NAVOPEN_KEY, navOpen); else sessionStorage.removeItem(NAVOPEN_KEY); } catch (err) {}
+      });
+    }
     var search = document.getElementById("menu-search");
-    if (search) {
+    if (search && !search.__bound) {
+      search.__bound = true;
       search.addEventListener("input", function () {
         var q = (search.value || "").trim().toLowerCase();
-        document.querySelectorAll("#sidebar-nav a.nav").forEach(function (a) {
+        var nv = document.getElementById("sidebar-nav");
+        if (!nv) return;
+        if (q) nv.classList.add("searching"); else nv.classList.remove("searching");
+        nv.querySelectorAll("a.nav").forEach(function (a) {
           var label = (a.textContent || "").toLowerCase();
           a.style.display = !q || label.indexOf(q) >= 0 ? "" : "none";
         });
+        // أخفِ مجموعات بلا نتائج ظاهرة
+        nv.querySelectorAll(".nav-sec").forEach(function (sec) {
+          if (!q) { sec.style.display = ""; return; }
+          var any = false;
+          sec.querySelectorAll("a.nav").forEach(function (a) { if (a.style.display !== "none") any = true; });
+          sec.style.display = any ? "" : "none";
+        });
       });
+    }
+    document.dispatchEvent(new Event("shell-ready"));
+  }
+
+  function paintShell(active, opts) {
+    opts = opts || {};
+    var title = TITLES[active] || [active, ""];
+    var brand = esc(opts.brand || "نظام المشاريع");
+    var sub = esc(opts.sub || "");
+    var allowedKeys = opts.allowedKeys || null;
+    var showLogout = !!opts.showLogout;
+
+    var htmlStr =
+      '<div class="layout" id="layout">' +
+        '<aside class="sidebar" id="sidebar">' +
+          '<div class="brand">' +
+            '<div class="brand-icon" style="padding:0;overflow:hidden;background:none;box-shadow:none"><img src="assets/img/logo-128.png" width="44" height="44" alt="" style="display:block;width:44px;height:44px"/></div>' +
+            '<div class="brand-text"><b id="shell-brand">' + brand + '</b><span id="shell-sub">' + sub + '</span></div>' +
+          '</div>' +
+          '<div class="sidebar-search-wrap">' + ICON.search +
+            '<input class="menu-search" id="menu-search" type="search" placeholder="بحث في القائمة…" autocomplete="off" />' +
+          '</div>' +
+          '<nav class="sidebar-nav" id="sidebar-nav">' + navHtml(active, allowedKeys) + '</nav>' +
+          '<div class="sidebar-foot">' +
+            '<div class="sidebar-ver"><b>نظام المشاريع</b><span>v' + String((window.APP_CONFIG || {}).APP_VERSION || "0.4") + '</span></div>' +
+          '</div>' +
+        '</aside>' +
+        '<div class="main">' +
+          '<header class="topbar">' +
+            '<button class="menu-btn ghost" id="toggle-nav" type="button" aria-label="القائمة">' + ICON.menu + '</button>' +
+            '<div class="topbar-title"><h1 id="page-h1">' + esc(title[0]) + '</h1><p class="sub" id="page-sub">' + esc(title[1] || "") + '</p></div>' +
+            '<div class="topbar-end">' +
+              '<button type="button" class="ghost install-btn" id="install-btn" title="تثبيت التطبيق على جهازك" aria-label="تثبيت التطبيق" hidden>' + ICON.download + '</button>' +
+              '<div class="notif-wrap"><button type="button" class="ghost bell-btn" id="bell-btn" title="التنبيهات" aria-label="التنبيهات">' + ICON.bell + '<span class="notif-badge" id="notif-badge" hidden>0</span></button>' +
+              '<div class="notif-panel card" id="notif-panel" hidden></div></div>' +
+              (showLogout ? '<button type="button" class="ghost" id="logout-btn" title="تسجيل الخروج" aria-label="تسجيل الخروج">' + ICON.logout + '</button>' : '') +
+            '</div>' +
+          '</header>' +
+          '<main class="content" id="page"><div class="empty" style="padding:48px 20px;text-align:center;color:var(--muted)">جارٍ التحميل…</div></main>' +
+        '</div>' +
+      '</div>';
+
+    // استبدل فقط داخل #app إن وُجد، وإلا body — دون مسح الـ scripts
+    var app = document.getElementById("app");
+    if (app) {
+      app.innerHTML = htmlStr;
+    } else {
+      // أنشئ حاوية app للحفاظ على السكربتات
+      var wrap = document.createElement("div");
+      wrap.id = "app";
+      wrap.innerHTML = htmlStr;
+      // أدرج في بداية body دون حذف السكربتات
+      if (document.body.firstChild) {
+        document.body.insertBefore(wrap, document.body.firstChild);
+      } else {
+        document.body.appendChild(wrap);
+      }
+      // احذف أي عناصر تحميل قديمة فارغة
+      Array.prototype.slice.call(document.body.children).forEach(function (el) {
+        if (el.id !== "app" && el.tagName !== "SCRIPT" && !el.classList.contains("toast")) {
+          // لا نحذف السكربتات
+        }
+      });
+    }
+
+    shell = { active: active, bound: false };
+    bindShellEvents();
+    restoreNavScroll();
+  }
+
+  function setActiveNav(active) {
+    var title = TITLES[active] || [active, ""];
+    var h1 = document.getElementById("page-h1");
+    var sub = document.getElementById("page-sub");
+    if (h1) h1.textContent = title[0];
+    if (sub) sub.textContent = title[1] || "";
+    document.querySelectorAll("#sidebar-nav a.nav").forEach(function (a) {
+      var on = a.getAttribute("data-key") === active;
+      if (on) a.classList.add("active"); else a.classList.remove("active");
+    });
+    // افتح مجموعة الصفحة الحالية
+    var g = groupOfKey(active);
+    if (g) {
+      navOpen = g;
+      try { sessionStorage.setItem(NAVOPEN_KEY, g); } catch (e) {}
+      document.querySelectorAll("#sidebar-nav .nav-sec").forEach(function (sec) {
+        var on = sec.getAttribute("data-grp") === g;
+        sec.classList.toggle("open", on);
+        var btn = sec.querySelector(".nav-group");
+        if (btn) btn.setAttribute("aria-expanded", on ? "true" : "false");
+      });
+    }
+    if (shell) shell.active = active;
+  }
+
+  function reconcileShell(active) {
+    if (!document.getElementById("layout")) {
+      // لا يوجد شيل بعد — ارسم من بيانات DB
+      var company = {};
+      try { company = DB.getCompany() || {}; } catch (e) {}
+      var brand = company.name || "نظام المشاريع";
+      var prof = (DB.getProfile && DB.getProfile()) || null;
+      var sub = DB.demoMode ? "وضع تجريبي" : (prof ? (prof.name || prof.full_name || "") : "");
+      var allowedKeys = null;
+      try {
+        allowedKeys = []; NAV.forEach(function (g) { g.items.forEach(function (it) { if (DB.allowed(it.key)) allowedKeys.push(it.key); }); });
+      } catch (e) {}
+      paintShell(active, {
+        brand: brand,
+        sub: sub,
+        allowedKeys: allowedKeys,
+        showLogout: !DB.demoMode
+      });
+      writeShellCache({
+        brand: brand,
+        sub: sub,
+        allowedKeys: allowedKeys,
+        showLogout: !DB.demoMode,
+        demo: !!DB.demoMode
+      });
+      if (window.Notify) try { Notify.mount(); } catch (e) {}
+      return;
+    }
+
+    // الشيل موجود: حدّث فقط ما تغيّر
+    setActiveNav(active);
+    var company = {};
+    try { company = DB.getCompany() || {}; } catch (e) {}
+    var brand = company.name || "نظام المشاريع";
+    var prof = (DB.getProfile && DB.getProfile()) || null;
+    var sub = DB.demoMode ? "وضع تجريبي" : (prof ? (prof.name || prof.full_name || "") : "");
+    var bEl = document.getElementById("shell-brand");
+    var sEl = document.getElementById("shell-sub");
+    if (bEl) bEl.textContent = brand;
+    if (sEl) sEl.textContent = sub;
+
+    // حدّث عناصر القائمة إن تغيّرت الصلاحيات
+    var allowedKeys = null;
+    try {
+      allowedKeys = []; NAV.forEach(function (g) { g.items.forEach(function (it) { if (DB.allowed(it.key)) allowedKeys.push(it.key); }); });
+    } catch (e) {}
+    var nav = document.getElementById("sidebar-nav");
+    if (nav && allowedKeys) {
+      var cur = Array.prototype.map.call(nav.querySelectorAll("a.nav"), function (a) { return a.getAttribute("data-key"); }).join(",");
+      if (cur !== allowedKeys.join(",")) {
+        nav.innerHTML = navHtml(active, allowedKeys);
+        restoreNavScroll();
+      }
+    }
+
+    // زر الخروج
+    var end = document.querySelector(".topbar-end");
+    if (end && !DB.demoMode && !document.getElementById("logout-btn")) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ghost";
+      btn.id = "logout-btn";
+      btn.title = "تسجيل الخروج";
+      btn.setAttribute("aria-label", "تسجيل الخروج");
+      btn.innerHTML = ICON.logout;
+      end.appendChild(btn);
+      btn.addEventListener("click", function () {
+        clearShellCache();
+        DB.signOut().then(function () { location.replace("login.html"); });
+      });
+    }
+
+    writeShellCache({
+      brand: brand,
+      sub: sub,
+      allowedKeys: allowedKeys,
+      showLogout: !DB.demoMode,
+      demo: !!DB.demoMode
+    });
+    if (window.Notify) try { Notify.mount(); } catch (e) {}
+    restoreNavScroll();
+  }
+
+  /** رسم فوري من الكاش قبل اكتمال DB — يمنع الشاشة البيضاء واختفاء القائمة */
+  function boot() {
+    if (document.body.classList.contains("auth-body")) return;
+    if (document.getElementById("layout")) return;
+    var key = document.body.getAttribute("data-page") || "dashboard";
+    var cache = readShellCache();
+    if (cache) {
+      paintShell(key, {
+        brand: cache.brand || "نظام المشاريع",
+        sub: cache.sub || "",
+        allowedKeys: cache.allowedKeys || null,
+        showLogout: !!cache.showLogout
+      });
+    } else {
+      // هيكل عظمي بسيط حتى يصل DB
+      paintShell(key, { brand: "نظام المشاريع", sub: "", allowedKeys: null, showLogout: false });
     }
   }
 
   function loadPageScript(pageKey) {
+    // تجنّب تحميل مزدوج
+    if (window.__pageScriptLoaded === pageKey) return;
+    window.__pageScriptLoaded = pageKey;
     var s = document.createElement("script");
-    s.src = "js/pages/" + pageKey + ".js?v=" + ((window.APP_CONFIG && APP_CONFIG.APP_VERSION) || "1");
+    s.src = "js/pages/" + pageKey + ".js?v=" + ((window.APP_CONFIG && APP_CONFIG.APP_VERSION) || "4");
     s.onerror = function () {
       var page = document.getElementById("page");
       if (page) page.innerHTML = '<div class="card pad"><p class="muted">غير متاحة.</p></div>';
@@ -269,20 +576,33 @@
     modal: modal,
     mountShell: function () {
       var pageKey = document.body.getAttribute("data-page") || "dashboard";
-      buildShell(pageKey);
+      reconcileShell(pageKey);
     },
-    loadPageScript: loadPageScript
+    loadPageScript: loadPageScript,
+    clearShellCache: clearShellCache
   };
 
-  document.addEventListener("DOMContentLoaded", function () {
+  // رسم فوري قبل انتظار DB
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", function () {
+      boot();
+      startApp();
+    });
+  } else {
+    boot();
+    startApp();
+  }
+
+  function startApp() {
+    if (document.body.classList.contains("auth-body")) return;
     if (!window.DB) {
-      document.body.innerHTML = '<p style="padding:2rem">خطأ في تحميل النظام</p>';
+      var pg = document.getElementById("page");
+      if (pg) pg.innerHTML = '<p style="padding:2rem">خطأ في تحميل النظام</p>';
       return;
     }
     DB.init().then(function () {
-      if (document.body.classList.contains("auth-body")) return;
-      UI.mountShell();
       var pageKey = document.body.getAttribute("data-page") || "dashboard";
+      UI.mountShell();
       if (!DB.allowed(pageKey)) {
         var pg = document.getElementById("page");
         if (pg) pg.innerHTML = '<div class="card empty" style="padding:48px 20px"><h3 style="margin:0 0 8px">غير مصرّح لك بهذه الصفحة</h3></div>';
@@ -291,11 +611,11 @@
       loadPageScript(pageKey);
     }).catch(function (e) {
       console.error(e);
-      var p = document.createElement("p");
-      p.style.padding = "2rem";
-      p.textContent = "تعذّر تهيئة النظام" + (e && e.message ? " — " + e.message : "");
-      document.body.innerHTML = "";
-      document.body.appendChild(p);
+      var pg = document.getElementById("page");
+      if (pg) {
+        pg.innerHTML = '<div class="card error" style="padding:2rem">تعذّر تهيئة النظام' +
+          (e && e.message ? " — " + esc(e.message) : "") + "</div>";
+      }
     });
-  });
+  }
 })();
