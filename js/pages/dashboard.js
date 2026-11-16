@@ -57,7 +57,7 @@
       kpi({ label: "المشاريع", icon: "projects", value: active, unit: "جاري التنفيذ", cls: late ? "c-red" : "", meta: late ? '<span style="color:var(--error)">' + late + " متأخر عن التسليم</span>" : "<span>لا تأخير</span>" }) + "</div>";
 
     var statusCount = {}; DB.list("projects").forEach(function (p) { if ((!st.project || p.id === st.project) && (!st.eng || p.engineer_id === st.eng)) statusCount[p.status] = (statusCount[p.status] || 0) + 1; });
-    var STC = { new: "#7b88a8", in_progress: "#0b7f73", paused: "#f2a516", completed: "#2b6cd9", delivered: "#12b886", closed: "#98a3bd" };
+    var STC = { new: "#7b88a8", in_progress: "#2a49d6", paused: "#f2a516", completed: "#2b6cd9", delivered: "#12b886", closed: "#98a3bd" };
 
     var quick = [["purchases", "فاتورة مشتريات"], ["stock", "حركة مخزون"], ["receipts", "مقبوضات"], ["project-expenses", "مصروف"], ["labor", "عمالة"], ["projects", "مشاريع"]];
     page.innerHTML = filters + kpis +
@@ -69,11 +69,11 @@
 
     var $ = function (s) { return page.querySelector(s); };
     var labels = series.map(function (s) { return s.label; });
-    Charts.bars($("#c-bars"), { labels: labels, series: [{ name: "الإيراد", color: "#0b7f73", values: series.map(function (s) { return s.revenue; }) }, { name: "التكلفة", color: "#f2a516", values: series.map(function (s) { return s.cost; }) }, { name: "الربح", color: "#2b6cd9", values: series.map(function (s) { return s.net; }) }] });
+    Charts.bars($("#c-bars"), { labels: labels, series: [{ name: "الإيراد", color: "#2a49d6", values: series.map(function (s) { return s.revenue; }) }, { name: "التكلفة", color: "#f2a516", values: series.map(function (s) { return s.cost; }) }, { name: "الربح", color: "#2b6cd9", values: series.map(function (s) { return s.net; }) }] });
     Charts.line($("#c-flow"), { labels: labels, series: [{ name: "داخل", color: "#12b886", values: series.map(function (s) { return s.cash_in; }) }, { name: "خارج", color: "#d92d3f", values: series.map(function (s) { return s.cash_out; }) }] });
-    Charts.donut($("#c-cost"), [{ label: "خامات", value: cur.materials, color: "#0b7f73" }, { label: "عمالة", value: cur.labor, color: "#f2a516" }, { label: "نقل", value: cur.transport, color: "#2b6cd9" }, { label: "تشوين", value: cur.storage, color: "#8a5cf6" }, { label: "أخرى", value: cur.other, color: "#e0559b" }], { top: Charts.short(cur.cost), sub: "التكلفة" });
+    Charts.donut($("#c-cost"), [{ label: "خامات", value: cur.materials, color: "#2a49d6" }, { label: "عمالة", value: cur.labor, color: "#f2a516" }, { label: "نقل", value: cur.transport, color: "#2b6cd9" }, { label: "تشوين", value: cur.storage, color: "#8a5cf6" }, { label: "أخرى", value: cur.other, color: "#e0559b" }], { top: Charts.short(cur.cost), sub: "التكلفة" });
     Charts.donut($("#c-status"), Object.keys(statusCount).map(function (k) { return { label: App.STATUS_AR[k] || k, value: statusCount[k], color: STC[k] }; }), { top: String(Object.keys(statusCount).reduce(function (a, k) { return a + statusCount[k]; }, 0)), sub: "مشروع" });
-    var boxes = DB.list("cashboxes").map(function (c) { return { label: c.name, value: DB.calcCashboxBalance(c.id), color: "#0b7f73" }; });
+    var boxes = DB.list("cashboxes").map(function (c) { return { label: c.name, value: DB.calcCashboxBalance(c.id), color: "#2a49d6" }; });
     Charts.hbars($("#c-cash"), boxes, { fmt: M, keepZero: true });
     Charts.hbars($("#c-top"), rowsCur.slice().sort(function (a, b) { return b.net - a.net; }).slice(0, 6).map(function (r) { return { label: r.project_name, value: r.net, sub: "هامش " + UI.pct(r.margin) }; }), { fmt: M });
     Charts.hbars($("#c-recv"), allRows.filter(function (r) { return r.receivable > 0.5; }).sort(function (a, b) { return b.receivable - a.receivable; }).slice(0, 6).map(function (r) { return { label: r.project_name, value: r.receivable, color: "#f2a516", sub: "محصّل " + M(r.received) + " من " + M(r.revenue) }; }), { fmt: M });

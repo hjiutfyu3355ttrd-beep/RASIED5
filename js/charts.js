@@ -1,7 +1,7 @@
 // رسوم بيانية SVG خفيفة بدون مكتبات (تعمل أوفلاين وتدعم الوضع الداكن)
 (function () {
   "use strict";
-  var PAL = ["#0b7f73", "#f2a516", "#2b6cd9", "#d92d3f", "#12b886", "#8a5cf6", "#e0559b", "#7b88a8"];
+  var PAL = ["#2a49d6", "#f2a516", "#6189fb", "#d92d3f", "#12b886", "#8a5cf6", "#e0559b", "#7b88a8"];
   function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
   function short(n) {
     n = Number(n) || 0; var a = Math.abs(n), s = n < 0 ? "-" : "";
