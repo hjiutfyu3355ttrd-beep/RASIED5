@@ -38,14 +38,14 @@
               var eng = DB.get("engineers", p.engineer_id);
               var prof = DB.calcProjectProfit(p.id);
               return UI.html`<tr>
-                <td>${p.code}</td>
-                <td>${p.name}</td>
-                <td>${eng ? eng.name : "—"}</td>
-                <td>${p.area || "—"}</td>
+                <td>${UI.esc(p.code)}</td>
+                <td>${UI.esc(p.name)}</td>
+                <td>${UI.esc(eng ? eng.name : "—")}</td>
+                <td>${UI.esc(p.area || "—")}</td>
                 <td>${UI.fmtDate(p.start_date)}</td>
                 <td>${UI.fmtDate(p.expected_end)}</td>
                 <td class="num">${UI.money(prof.revenue)}</td>
-                <td>${statusMap[p.status] || p.status}</td>
+                <td>${UI.esc(statusMap[p.status] || p.status)}</td>
               </tr>`;
             }).join("") || '<tr><td colspan="8" class="muted">لا توجد مشاريع</td></tr>'}
           </tbody>

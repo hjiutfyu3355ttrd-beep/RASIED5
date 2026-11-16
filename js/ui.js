@@ -12,6 +12,13 @@
     return out;
   }
 
+  // تهريب HTML — أي نص قادم من قاعدة البيانات يجب أن يمر من هنا قبل إدراجه في القالب
+  function esc(v) {
+    return String(v == null ? "" : v)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
   function currency() {
     try { var c = DB.getCompany(); return (c && c.currency) || "ج.م"; } catch (e) { return "ج.م"; }
   }
@@ -74,6 +81,10 @@
     profits: svg('<polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>'),
     reports: svg('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>'),
     settings: svg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'),
+    users: svg('<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'),
+    bell: svg('<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>'),
+    download: svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>'),
+    logout: svg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>'),
     menu: svg('<line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>'),
     search: svg('<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>')
   };
@@ -97,6 +108,7 @@
     { key: "storages", label: "التشوين", icon: "storage" },
     { key: "profits", label: "ربحية المشاريع", icon: "profits" },
     { key: "reports", label: "التقارير", icon: "reports" },
+    { key: "users", label: "المستخدمون", icon: "users", adminOnly: true },
     { key: "settings", label: "الإعدادات", icon: "settings" }
   ];
 
@@ -119,11 +131,12 @@
     storages: ["التشوين", ""],
     profits: ["ربحية المشاريع", "تكلفة وخامات وعمالة وصافي"],
     reports: ["التقارير", ""],
+    users: ["المستخدمون", "حسابات الدخول والصلاحيات"],
     settings: ["الإعدادات", ""]
   };
 
   function navHtml(active) {
-    return NAV.map(function (n) {
+    return NAV.filter(function (n) { return DB.allowed(n.key); }).map(function (n) {
       var on = n.key === active ? " on" : "";
       return '<a class="nav' + on + '" href="' + n.key + '.html" data-key="' + n.key + '">' +
         '<span class="nav-ic">' + (ICON[n.icon] || "") + '</span>' +
@@ -135,14 +148,16 @@
     var title = TITLES[active] || [active, ""];
     var company = {};
     try { company = DB.getCompany() || {}; } catch (e) {}
-    var brand = company.name || "نظام المشاريع";
+    var brand = esc(company.name || "نظام المشاريع");
+    var prof = (DB.getProfile && DB.getProfile()) || null;
+    var sub = DB.demoMode ? "وضع تجريبي" : esc(prof ? prof.name : "");
 
     document.body.innerHTML =
       '<div class="layout" id="layout">' +
         '<aside class="sidebar" id="sidebar">' +
           '<div class="brand">' +
             '<div class="brand-icon">' + ICON.projects + '</div>' +
-            '<div class="brand-text"><b>' + brand + '</b><span>وضع تجريبي</span></div>' +
+            '<div class="brand-text"><b>' + brand + '</b><span>' + sub + '</span></div>' +
           '</div>' +
           '<div class="sidebar-search-wrap">' + ICON.search +
             '<input class="menu-search" id="menu-search" type="search" placeholder="بحث في القائمة…" autocomplete="off" />' +
@@ -156,7 +171,11 @@
           '<header class="topbar">' +
             '<button class="menu-btn ghost" id="toggle-nav" type="button" aria-label="القائمة">' + ICON.menu + '</button>' +
             '<div class="topbar-title"><h1 id="page-h1">' + title[0] + '</h1><p class="sub" id="page-sub">' + title[1] + '</p></div>' +
-            '<div class="topbar-end"></div>' +
+            '<div class="topbar-end">' +
+              '<button type="button" class="ghost install-btn" id="install-btn" title="تثبيت التطبيق على جهازك" aria-label="تثبيت التطبيق" hidden>' + ICON.download + '</button>' +
+              '<div class="notif-wrap"><button type="button" class="ghost bell-btn" id="bell-btn" title="التنبيهات" aria-label="التنبيهات">' + ICON.bell + '<span class="notif-badge" id="notif-badge" hidden>0</span></button>' +
+              '<div class="notif-panel card" id="notif-panel" hidden></div></div>' +
+              (DB.demoMode ? "" : '<button type="button" class="ghost" id="logout-btn" title="تسجيل الخروج" aria-label="تسجيل الخروج">' + ICON.logout + '</button>') + '</div>' +
           '</header>' +
           '<main class="content" id="page"></main>' +
         '</div>' +
@@ -171,6 +190,14 @@
       if (e.target === layout) layout.classList.remove("nav-open");
       if (e.target.closest && e.target.closest("a.nav")) layout.classList.remove("nav-open");
     });
+    var logout = document.getElementById("logout-btn");
+    if (logout) logout.addEventListener("click", function () {
+      DB.signOut().then(function () { location.replace("login.html"); });
+    });
+    var inst = document.getElementById("install-btn");
+    if (inst) inst.addEventListener("click", function () { if (window.PWA) PWA.install(); });
+    if (window.Notify) Notify.mount();
+    document.dispatchEvent(new Event("shell-ready"));
     var search = document.getElementById("menu-search");
     if (search) {
       search.addEventListener("input", function () {
@@ -224,6 +251,7 @@
 
   window.UI = {
     html: html,
+    esc: esc,
     money: money,
     moneyC: moneyC,
     num: num,
@@ -248,10 +276,19 @@
       if (document.body.classList.contains("auth-body")) return;
       UI.mountShell();
       var pageKey = document.body.getAttribute("data-page") || "dashboard";
+      if (!DB.allowed(pageKey)) {
+        var pg = document.getElementById("page");
+        if (pg) pg.innerHTML = '<div class="card empty" style="padding:48px 20px"><h3 style="margin:0 0 8px">غير مصرّح لك بهذه الصفحة</h3><p class="muted" style="margin:0">تواصل مع مدير النظام لإضافة الصلاحية.</p></div>';
+        return;
+      }
       loadPageScript(pageKey);
     }).catch(function (e) {
       console.error(e);
-      document.body.innerHTML = '<p style="padding:2rem">تعذّر تهيئة النظام</p>';
+      var p = document.createElement("p");
+      p.style.padding = "2rem";
+      p.textContent = "تعذّر تهيئة النظام" + (e && e.message ? " — " + e.message : "");
+      document.body.innerHTML = "";
+      document.body.appendChild(p);
     });
   });
 })();

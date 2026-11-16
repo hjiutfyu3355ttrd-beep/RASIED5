@@ -10,7 +10,7 @@
   var low = stock.filter(function (r) { return r.low; });
 
   var statusRows = Object.keys(s.by_status || {}).map(function (k) {
-    return UI.html`<tr><td>${k}</td><td class="num">${s.by_status[k]}</td></tr>`;
+    return UI.html`<tr><td>${UI.esc(k)}</td><td class="num">${s.by_status[k]}</td></tr>`;
   }).join("");
 
   page.innerHTML = UI.html`
@@ -93,14 +93,14 @@
           <tbody>
             ${profits.map(function (p) {
               return UI.html`<tr>
-                <td>${p.project_name}</td>
-                <td>${p.engineer_name}</td>
+                <td>${UI.esc(p.project_name)}</td>
+                <td>${UI.esc(p.engineer_name)}</td>
                 <td class="num">${UI.money(p.revenue)}</td>
                 <td class="num">${UI.money(p.total_cost)}</td>
                 <td class="num">${UI.money(p.net)}</td>
                 <td class="num">${UI.pct(p.margin)}</td>
                 <td class="num">${UI.money(p.receivable)}</td>
-                <td>${p.status}</td>
+                <td>${UI.esc(p.status)}</td>
               </tr>`;
             }).join("") || '<tr><td colspan="8" class="muted">لا توجد بيانات</td></tr>'}
           </tbody>
@@ -117,8 +117,8 @@
             <tbody>
               ${low.map(function (r) {
                 return UI.html`<tr>
-                  <td>${r.item_name}</td>
-                  <td>${r.warehouse_name}</td>
+                  <td>${UI.esc(r.item_name)}</td>
+                  <td>${UI.esc(r.warehouse_name)}</td>
                   <td class="num">${UI.num(r.qty)}</td>
                   <td class="num">${UI.num(r.reorder_level)}</td>
                 </tr>`;

@@ -44,9 +44,9 @@
           <tbody>
             ${rows.map(function (p) {
               return UI.html`<tr>
-                <td>${p.project_code}</td>
-                <td>${p.project_name}</td>
-                <td>${p.engineer_name}</td>
+                <td>${UI.esc(p.project_code)}</td>
+                <td>${UI.esc(p.project_name)}</td>
+                <td>${UI.esc(p.engineer_name)}</td>
                 <td class="num">${UI.money(p.revenue)}</td>
                 <td class="num">${UI.money(p.materials)}</td>
                 <td class="num">${UI.money(p.labor)}</td>

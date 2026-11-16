@@ -1,11 +1,11 @@
 {
   "id": "/",
-  "name": "نظام السيارات",
-  "short_name": "السيارات",
-  "description": "إدارة السيارات والشركاء: المصروفات والدخل والمديونيات وأرباح الشركاء",
+  "name": "نظام إدارة المشاريع والتشطيبات",
+  "short_name": "المشاريع",
+  "description": "إدارة المشاريع والمخزون والمشتريات والعمالة وربحية كل مشروع",
   "lang": "ar",
   "dir": "rtl",
-  "start_url": "./index.html?source=pwa",
+  "start_url": "./dashboard.html?source=pwa",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
@@ -44,9 +44,9 @@
   ],
   "shortcuts": [
     {
-      "name": "التنبيهات",
-      "short_name": "التنبيهات",
-      "url": "./notifications.html?source=shortcut",
+      "name": "لوحة التحكم",
+      "short_name": "الرئيسية",
+      "url": "./dashboard.html?source=shortcut",
       "icons": [
         {
           "src": "assets/img/icon-192.png",
@@ -55,9 +55,9 @@
       ]
     },
     {
-      "name": "مصروف جديد",
-      "short_name": "مصروف",
-      "url": "./expenses.html?source=shortcut",
+      "name": "المشاريع",
+      "short_name": "المشاريع",
+      "url": "./projects.html?source=shortcut",
       "icons": [
         {
           "src": "assets/img/icon-192.png",
@@ -66,9 +66,20 @@
       ]
     },
     {
-      "name": "الأقساط",
-      "short_name": "الأقساط",
-      "url": "./installments.html?source=shortcut",
+      "name": "حركات المخزون",
+      "short_name": "المخزون",
+      "url": "./stock.html?source=shortcut",
+      "icons": [
+        {
+          "src": "assets/img/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "ربحية المشاريع",
+      "short_name": "الربحية",
+      "url": "./profits.html?source=shortcut",
       "icons": [
         {
           "src": "assets/img/icon-192.png",

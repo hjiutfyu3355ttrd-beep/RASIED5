@@ -53,8 +53,8 @@
           <tbody>
             ${balances.map(function (r) {
               return UI.html`<tr class="${r.low ? "row-warn" : ""}">
-                <td>${r.item_name}</td>
-                <td>${r.warehouse_name}</td>
+                <td>${UI.esc(r.item_name)}</td>
+                <td>${UI.esc(r.warehouse_name)}</td>
                 <td class="num">${UI.num(r.qty)}</td>
                 <td class="num">${UI.money(r.value)}</td>
                 <td class="num">${UI.money(r.avg_cost)}</td>
@@ -87,12 +87,12 @@
           <tbody>
             ${moves.map(function (m) {
               return UI.html`<tr>
-                <td>${m.id}</td>
+                <td>${UI.esc(m.id)}</td>
                 <td>${UI.fmtDate(m.date)}</td>
-                <td>${typeLabel[m.type] || m.type}</td>
-                <td>${itemName(m.item_id)}</td>
-                <td>${whName(m.warehouse_id)}</td>
-                <td>${prjName(m.project_id)}</td>
+                <td>${UI.esc(typeLabel[m.type] || m.type)}</td>
+                <td>${UI.esc(itemName(m.item_id))}</td>
+                <td>${UI.esc(whName(m.warehouse_id))}</td>
+                <td>${UI.esc(prjName(m.project_id))}</td>
                 <td class="num">${UI.num(m.qty)}</td>
                 <td class="num">${UI.money(m.unit_cost)}</td>
                 <td class="num">${UI.money(m.value)}</td>

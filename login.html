@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5" />
+  <meta name="theme-color" content="#063e39" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="المشاريع" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <title>تسجيل الدخول — نظام المشاريع</title>
+  <link rel="icon" href="assets/img/icon-192.png" type="image/png" />
+  <link rel="stylesheet" href="css/style.css?v=2" />
+</head>
+<body class="auth-body" data-page="login">
+  <div class="auth-shell">
+    <aside class="auth-hero">
+      <div class="auth-brand"><img class="brand-logo" src="assets/img/logo-128.png" width="52" height="52" alt="" /><b>نظام إدارة المشاريع والتشطيبات</b></div>
+      <div class="auth-hero-body">
+        <h1>مشاريعك وتكاليفك<br />في مكان واحد</h1>
+        <p>مخزون بمتوسط تكلفة مرجح، مشتريات، عمالة، نقل، وربحية كل مشروع — بحسابات ومستخدمين وصلاحيات.</p>
+        <ul class="auth-points">
+          <li><i></i>دخول برقم الهاتف وكلمة المرور</li>
+          <li><i></i>صلاحيات لكل مستخدم على مستوى الصفحات</li>
+          <li><i></i>تثبيت على الموبايل كتطبيق</li>
+          <li><i></i>تنبيهات المخزون والمشاريع المتأخرة</li>
+        </ul>
+      </div>
+      <div class="auth-foot">v0.2.0</div>
+    </aside>
+
+    <main class="auth-main">
+      <div class="auth-card card">
+        <div class="seg auth-tabs" role="tablist" id="tabs" hidden>
+          <button type="button" role="tab" id="tab-login" class="on">تسجيل الدخول</button>
+          <button type="button" role="tab" id="tab-setup">إعداد النظام</button>
+        </div>
+
+        <form id="form-login" class="stack" novalidate>
+          <div><h2 class="auth-h">أهلاً بعودتك 👋</h2><p class="muted" style="margin:4px 0 0">ادخل برقم هاتفك (أو بريدك) وكلمة المرور</p></div>
+          <div class="field"><label for="l-id">رقم الهاتف أو البريد الإلكتروني</label><input id="l-id" type="text" inputmode="tel" dir="ltr" autocomplete="username" placeholder="مثال: 201001234567" required /></div>
+          <div class="field"><label for="l-pass">كلمة المرور</label><div class="pw"><input id="l-pass" type="password" dir="ltr" autocomplete="current-password" required /><button type="button" class="ghost pw-eye" data-eye="l-pass" aria-label="إظهار">👁</button></div></div>
+          <div style="text-align:end;margin-top:-6px"><button type="button" class="ghost small" id="forgot">نسيت كلمة المرور؟</button></div>
+          <div class="auth-err" id="err-login" role="alert" hidden></div>
+          <button class="primary auth-submit" type="submit" id="btn-login">دخول</button>
+        </form>
+
+        <form id="form-setup" class="stack" novalidate hidden>
+          <div><h2 class="auth-h">إعداد النظام لأول مرة</h2><p class="muted" style="margin:4px 0 0">أنشئ حساب المدير الأول. بعدها تضيف بقية المستخدمين من صفحة «المستخدمون».</p></div>
+          <div class="field"><label for="s-name">اسمك</label><input id="s-name" autocomplete="name" required /></div>
+          <div class="field"><label for="s-phone">رقم الهاتف (يُستخدم للدخول)</label><input id="s-phone" type="tel" inputmode="tel" dir="ltr" autocomplete="username" placeholder="مع كود الدولة، مثال: 201001234567" required /></div>
+          <div class="field"><label for="s-pass">كلمة المرور (6 أحرف على الأقل)</label><div class="pw"><input id="s-pass" type="password" dir="ltr" autocomplete="new-password" minlength="6" required /><button type="button" class="ghost pw-eye" data-eye="s-pass" aria-label="إظهار">👁</button></div></div>
+          <div class="auth-err" id="err-setup" role="alert" hidden></div>
+          <button class="primary auth-submit" type="submit" id="btn-setup">إنشاء حساب المدير</button>
+        </form>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <script src="js/config.js?v=2"></script>
+  <script src="js/db.js?v=2"></script>
+  <script src="js/ui.js?v=2"></script>
+  <script src="js/login.js?v=2"></script>
+  <script defer src="js/pwa.js?v=2"></script>
+</body>
+</html>

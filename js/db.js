@@ -16,7 +16,7 @@
     }
   }
   var live = !!client;
-  var demoMode = !live;
+  var demoMode = !configured; // مهم: لو الإعدادات موجودة لكن المكتبة فشلت → لا نرجع لـ Demo بصمت
   var profile = null;
   var cache = null;
   var commitQueue = Promise.resolve();
@@ -333,8 +333,197 @@
     "labor", "transports", "storages", "cash_movements", "settings", "app_users"
   ];
 
-  // أعمدة مسموح إرسالها (للـ Live لاحقاً)
-  var COLS = {};
+  // أعمدة مسموح إرسالها إلى Supabase (أي حقل آخر في الصف يُتجاهل)
+  var COLS = {
+    company: ["id", "name", "phone", "currency", "address", "inventory_method"],
+    engineers: ["id", "code", "name", "phone", "address", "status", "notes"],
+    projects: ["id", "code", "name", "engineer_id", "address", "area", "description", "start_date", "expected_end", "actual_end", "status", "notes"],
+    suppliers: ["id", "code", "name", "phone", "address", "activity", "opening_balance", "notes", "status"],
+    items: ["id", "code", "name", "category", "unit", "default_purchase_price", "reorder_level", "preferred_supplier_id", "notes"],
+    warehouses: ["id", "code", "name", "location", "notes"],
+    cashboxes: ["id", "code", "name", "opening_balance", "notes"],
+    expense_types: ["id", "code", "name", "category"],
+    purchase_invoices: ["id", "code", "date", "supplier_id", "payment_terms", "paid_at_purchase", "cashbox_id", "total", "balance", "notes"],
+    purchase_details: ["id", "invoice_id", "item_id", "warehouse_id", "project_id", "qty", "unit_price", "discount", "tax", "net", "destination"],
+    stock_movements: ["id", "date", "type", "ref", "item_id", "warehouse_id", "project_id", "engineer_id", "qty", "unit_cost", "value", "original_issue_id", "notes"],
+    supplier_payments: ["id", "code", "date", "supplier_id", "amount", "method", "cashbox_id", "notes"],
+    project_invoices: ["id", "code", "date", "project_id", "engineer_id", "amount", "notes"],
+    customer_receipts: ["id", "code", "date", "project_id", "engineer_id", "amount", "method", "cashbox_id", "notes"],
+    project_expenses: ["id", "code", "date", "project_id", "engineer_id", "expense_type_id", "description", "amount", "paid", "method", "cashbox_id", "notes"],
+    labor: ["id", "date", "project_id", "engineer_id", "worker_name", "work_type", "days", "hours", "day_rate", "hour_rate", "total", "paid", "cashbox_id", "payment_status", "notes"],
+    transports: ["id", "code", "date", "project_id", "engineer_id", "carrier", "type", "amount", "paid", "cashbox_id", "notes"],
+    storages: ["id", "code", "date", "project_id", "engineer_id", "place", "duration", "duration_unit", "unit_price", "total", "paid", "cashbox_id", "notes"],
+    cash_movements: ["id", "date", "cashbox_id", "direction", "amount", "description", "notes"],
+    app_users: ["id", "name", "phone", "role", "active"]
+  };
+  var DATE_COLS = { date: 1, start_date: 1, expected_end: 1, actual_end: 1 };
+
+  /** يجهّز صفاً للإرسال: أعمدة معروفة فقط، والنص الفارغ في التواريخ والمفاتيح الأجنبية → null */
+  function toPayload(table, row) {
+    var out = {};
+    (COLS[table] || []).forEach(function (c) {
+      if (row[c] === undefined) return;
+      var v = row[c];
+      if (v === "" && (DATE_COLS[c] || /_id$/.test(c))) v = null;
+      out[c] = v;
+    });
+    return out;
+  }
+
+  /** رسالة خطأ عربية مفهومة */
+  function friendlyError(err) {
+    var code = err && err.code;
+    if (code === "23505") return "هذا الكود/المعرّف مستخدم من قبل";
+    if (code === "23503") return "السجل مرتبط ببيانات أخرى (لا يمكن الحفظ/الحذف)";
+    if (code === "23502") return "حقل مطلوب فارغ";
+    if (code === "23514") return "قيمة غير مسموحة في أحد الحقول";
+    if (code === "42501" || /row-level security/i.test((err && err.message) || "")) return "لا تملك صلاحية تنفيذ هذه العملية";
+    if (err && /Failed to fetch|NetworkError/i.test(err.message || "")) return "تعذّر الاتصال بالخادم، تحقق من الإنترنت";
+    return (err && err.message) || "خطأ غير متوقع";
+  }
+  function fail(err) {
+    var e = new Error(friendlyError(err));
+    e.original = err;
+    if (typeof DB !== "undefined" && DB.onError) { try { DB.onError(e); } catch (x) {} }
+    return Promise.reject(e);
+  }
+
+  /** يجلب كل صفوف جدول (صفحات من 1000 لأن Supabase يقطع عند 1000) */
+  function fetchAll(table) {
+    var size = 1000;
+    function page(from, acc) {
+      return client.from(table).select("*").order("id").range(from, from + size - 1).then(function (r) {
+        if (r.error) throw r.error;
+        var rows = r.data || [];
+        acc = acc.concat(rows);
+        return rows.length < size ? acc : page(from + size, acc);
+      });
+    }
+    return page(0, []);
+  }
+
+  function never() { return new Promise(function () {}); }
+
+  // ——— الدخول بالهاتف: يُحوَّل لبريد داخلي (أو يُقبل البريد الحقيقي كما هو) ———
+  function normPhone(v) {
+    var d = String(v || "").replace(/[٠-٩]/g, function (c) { return String(c.charCodeAt(0) - 0x660); }).replace(/\D/g, "");
+    if (d.indexOf("00") === 0) d = d.slice(2);
+    return d;
+  }
+  function loginEmail(identifier) {
+    var v = String(identifier || "").trim();
+    if (v.indexOf("@") > 0) return v;
+    return "p" + normPhone(v) + "@" + (cfg.PHONE_EMAIL_DOMAIN || "phone.projectserp.app");
+  }
+
+  function showBlocked(title, msg, note) {
+    document.body.innerHTML =
+      '<div class="login-wrap"><div class="card suspended-card">' +
+      '<div class="susp-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m10.3 3.9-8.5 14.7A2 2 0 0 0 3.5 21.6h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></div>' +
+      '<h2></h2><p class="muted"></p><div class="susp-note" hidden></div>' +
+      '<button type="button" class="primary" id="blocked-out">تسجيل الخروج</button></div></div>';
+    var box = document.body.querySelector(".card");
+    box.querySelector("h2").textContent = title;
+    box.querySelector("p").textContent = msg;
+    if (note) { var n = box.querySelector(".susp-note"); n.textContent = note; n.hidden = false; }
+    document.getElementById("blocked-out").onclick = function () {
+      client.auth.signOut().then(function () { location.replace("login.html"); });
+    };
+  }
+
+  function loadAllLive(userId) {
+    var plain = TABLES.filter(function (t) { return t !== "company" && t !== "settings"; });
+    return Promise.all([
+      Promise.all(plain.map(fetchAll)),
+      fetchAll("company"),
+      fetchAll("settings")
+    ]).then(function (res) {
+      var data = {};
+      plain.forEach(function (t, i) { data[t] = res[0][i]; });
+      data.company = res[1][0] || null;
+      var main = res[2].filter(function (r) { return r.id === "main"; })[0];
+      data.settings = Object.assign({}, deepClone(SEED.settings), (main && main.data) || {});
+      return data;
+    });
+  }
+
+  function initLive() {
+    var authPage = document.body.classList.contains("auth-body");
+    return client.auth.getSession().then(function (r) {
+      var session = r.data && r.data.session;
+      if (!session) {
+        if (authPage) return null;
+        location.replace("login.html");
+        return never();
+      }
+      if (authPage) { location.replace("dashboard.html"); return never(); }
+
+      client.auth.onAuthStateChange(function (ev) {
+        if (ev === "SIGNED_OUT") location.replace("login.html");
+      });
+
+      return client.from("app_users").select("*").eq("id", session.user.id).maybeSingle().then(function (pr) {
+        if (pr.error) throw pr.error;
+        var p = pr.data;
+        if (!p || !p.active) {
+          showBlocked("الحساب موقوف", "تم إيقاف هذا الحساب أو لم يُفعَّل بعد. تواصل مع مدير النظام.", p && p.status_note);
+          return never();
+        }
+        profile = {
+          id: p.id, role: p.role, name: p.name || session.user.email, email: session.user.email,
+          phone: p.phone || "", permissions: Array.isArray(p.permissions) ? p.permissions : []
+        };
+        return loadAllLive(p.id).then(function (data) {
+          cache = data;
+          DB.ready = true;
+          // آخر ظهور + أيام الاستخدام (لا يعطّل الصفحة لو فشل)
+          try { client.rpc("heartbeat").then(function () {}, function () {}); } catch (e) {}
+          return profile;
+        });
+      });
+    });
+  }
+
+  function liveSave(table, row) {
+    if (table === "settings") {
+      var merged = Object.assign({}, cache.settings, row);
+      return client.from("settings").upsert({ id: "main", data: merged }, { onConflict: "id" }).select().single()
+        .then(function (r) {
+          if (r.error) return fail(r.error);
+          cache.settings = merged;
+          return merged;
+        });
+    }
+    if (!COLS[table]) return fail(new Error("جدول غير معروف: " + table));
+
+    var existing = table === "company" ? cache.company : null;
+    if (table === "company") {
+      row = Object.assign({ id: "comp-1" }, existing || {}, row);
+    } else {
+      if (!row.id) row.id = uid();
+      var old = (cache[table] || []).find(function (x) { return x.id === row.id; });
+      if (old) row = Object.assign({}, old, row);
+    }
+    return client.from(table).upsert(toPayload(table, row), { onConflict: "id" }).select().single()
+      .then(function (r) {
+        if (r.error) return fail(r.error);
+        var saved = r.data;
+        if (table === "company") { cache.company = saved; return saved; }
+        var arr = cache[table] || (cache[table] = []);
+        var idx = arr.findIndex(function (x) { return x.id === saved.id; });
+        if (idx >= 0) arr[idx] = saved; else arr.push(saved);
+        return saved;
+      });
+  }
+
+  function liveRemove(table, id) {
+    if (!COLS[table] || table === "company") return fail(new Error("لا يمكن الحذف من: " + table));
+    return client.from(table).delete().eq("id", id).select("id").then(function (r) {
+      if (r.error) return fail(r.error);
+      if (!r.data || !r.data.length) return fail(new Error("لم يتم الحذف (لا تملك الصلاحية أو السجل غير موجود)"));
+      cache[table] = (cache[table] || []).filter(function (x) { return x.id !== id; });
+    });
+  }
 
   function deepClone(o) {
     return JSON.parse(JSON.stringify(o));
@@ -618,7 +807,7 @@
     onError: null,
 
     init: function () {
-      return new Promise(function (resolve) {
+      return new Promise(function (resolve, reject) {
         if (demoMode) {
           cache = loadDemo();
           DB.ready = true;
@@ -626,38 +815,102 @@
           resolve(profile);
           return;
         }
-        // Live لاحقاً
-        resolve(null);
+        if (!client) { reject(new Error(fatal || "تعذّر تهيئة Supabase")); return; }
+        initLive().then(resolve, reject);
       });
+    },
+
+    // ——— المصادقة (Live) ———
+    /** identifier: رقم هاتف أو بريد إلكتروني */
+    signIn: function (identifier, password) {
+      if (!client) return Promise.reject(new Error(fatal || "Supabase غير مهيأ"));
+      return client.auth.signInWithPassword({ email: loginEmail(identifier), password: password }).then(function (r) {
+        if (r.error) {
+          var m = /Invalid login credentials/i.test(r.error.message) ? "رقم الهاتف أو كلمة المرور غير صحيحة" : friendlyError(r.error);
+          return Promise.reject(new Error(m));
+        }
+        return client.rpc("record_login", { p_ua: navigator.userAgent }).then(function () { return r.data; }, function () { return r.data; });
+      });
+    },
+    normPhone: normPhone,
+    client: function () { return client; },
+    /** استدعاء Edge Function وإرجاع رسالة الخطأ العربية القادمة منها */
+    fn: function (name, body) {
+      if (!client) return Promise.reject(new Error(fatal || "Supabase غير مهيأ"));
+      return client.functions.invoke(name, { body: body }).then(function (r) {
+        if (!r.error) return r.data;
+        var msg = "تعذّر تنفيذ العملية";
+        var ctx = r.error.context;
+        if (ctx && ctx.json) {
+          return ctx.json().then(function (j) { throw new Error((j && j.message) || msg); }, function () { throw new Error(msg); });
+        }
+        throw new Error(msg);
+      });
+    },
+    /** هل المستخدم الحالي مسموح له بصفحة؟ (الرئيسية متاحة للجميع، المدير كل شيء) */
+    allowed: function (pageKey) {
+      if (demoMode) return true;
+      if (!profile) return false;
+      if (pageKey === "dashboard" || pageKey === "login") return true;
+      if (profile.role === "admin") return true;
+      if (pageKey === "users") return false;
+      return profile.permissions.indexOf(pageKey) !== -1;
+    },
+    hasFlag: function (flag) { return !!profile && profile.permissions.indexOf(flag) !== -1; },
+    signOut: function () {
+      if (!client) return Promise.resolve();
+      return client.auth.signOut();
+    },
+    getProfile: function () { return profile; },
+    /** إعادة تحميل كل البيانات من السيرفر (Live فقط) */
+    reload: function () {
+      if (demoMode || !profile) return Promise.resolve();
+      return loadAllLive(profile.id).then(function (data) { cache = data; });
     },
 
     role: function () { return profile ? profile.role : null; },
     isAdmin: function () { return profile && profile.role === "admin"; },
-    canWrite: function () { return profile && (profile.role === "admin" || profile.role === "staff"); },
+    canWrite: function () { return !!profile && (profile.role === "admin" || profile.role === "staff"); },
+    canEdit: function () { return !!profile && (profile.role === "admin" || (profile.role === "staff" && profile.permissions.indexOf("deny:edit") === -1)); },
+    canDelete: function () { return !!profile && (profile.role === "admin" || (profile.role === "staff" && profile.permissions.indexOf("deny:delete") === -1)); },
 
     // قوائم بسيطة
     list: function (table) {
       if (!cache) return [];
       if (table === "company") return cache.company ? [cache.company] : [];
+      if (table === "settings") return cache.settings ? [cache.settings] : [];
       return (cache[table] || []).slice();
     },
     get: function (table, id) {
       if (table === "company") return cache.company;
+      if (table === "settings") return cache.settings;
       return (cache[table] || []).find(function (r) { return r.id === id; }) || null;
     },
     getCompany: function () { return cache ? cache.company : null; },
 
-    // حفظ عام (Demo)
+    // حفظ عام — Demo: localStorage / Live: Supabase (الكاش يتحدّث بعد نجاح الحفظ)
     save: function (table, row) {
       if (!cache) return Promise.reject(new Error("not ready"));
+      if (!demoMode) {
+        if (!DB.canWrite()) return fail({ code: "42501" });
+        var isUpdate = table === "company" || table === "settings" ||
+          (row && row.id && (cache[table] || []).some(function (x) { return x.id === row.id; }));
+        if (isUpdate && !DB.canEdit()) return fail({ code: "42501" });
+        return liveSave(table, row);
+      }
       if (table === "company") {
         cache.company = Object.assign({}, cache.company, row);
         saveDemo();
         return Promise.resolve(cache.company);
       }
+      if (table === "settings") {
+        cache.settings = Object.assign({}, cache.settings, row);
+        saveDemo();
+        return Promise.resolve(cache.settings);
+      }
       var arr = cache[table] || (cache[table] = []);
-      var idx = arr.findIndex(function (r) { return r.id === row.id; });
       if (!row.id) row.id = uid();
+      var idx = arr.findIndex(function (r) { return r.id === row.id; });
       if (idx >= 0) arr[idx] = Object.assign({}, arr[idx], row);
       else arr.push(row);
       saveDemo();
@@ -665,6 +918,10 @@
     },
     remove: function (table, id) {
       if (!cache) return Promise.reject(new Error("not ready"));
+      if (!demoMode) {
+        if (!DB.canDelete()) return fail({ code: "42501" });
+        return liveRemove(table, id);
+      }
       var arr = cache[table] || [];
       cache[table] = arr.filter(function (r) { return r.id !== id; });
       saveDemo();
@@ -733,11 +990,13 @@
       return deepClone(cache);
     },
     restoreAll: function (data) {
+      if (!demoMode) return Promise.reject(new Error("الاستعادة الكاملة متاحة في الوضع التجريبي فقط"));
       cache = data;
       saveDemo();
       return Promise.resolve();
     },
     resetDemo: function () {
+      if (!demoMode) return Promise.reject(new Error("إعادة الضبط متاحة في الوضع التجريبي فقط"));
       cache = deepClone(SEED);
       saveDemo();
       return Promise.resolve();
