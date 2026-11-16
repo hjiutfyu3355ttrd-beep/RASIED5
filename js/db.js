@@ -345,7 +345,7 @@
     expense_types: ["id", "code", "name", "category"],
     purchase_invoices: ["id", "code", "date", "supplier_id", "payment_terms", "paid_at_purchase", "cashbox_id", "total", "balance", "notes"],
     purchase_details: ["id", "invoice_id", "item_id", "warehouse_id", "project_id", "qty", "unit_price", "discount", "tax", "net", "destination"],
-    stock_movements: ["id", "date", "type", "ref", "item_id", "warehouse_id", "project_id", "engineer_id", "qty", "unit_cost", "value", "original_issue_id", "notes"],
+    stock_movements: ["id", "date", "type", "ref", "item_id", "warehouse_id", "project_id", "engineer_id", "qty", "unit_cost", "value", "original_issue_id", "supplier_id", "notes"],
     supplier_payments: ["id", "code", "date", "supplier_id", "amount", "method", "cashbox_id", "notes"],
     project_invoices: ["id", "code", "date", "project_id", "engineer_id", "amount", "notes"],
     customer_receipts: ["id", "code", "date", "project_id", "engineer_id", "amount", "method", "cashbox_id", "notes"],
@@ -570,54 +570,56 @@
   }
 
   // ——— محرك متوسط التكلفة المرجح المتحرك ———
-  /**
-   * يعيد حساب رصيد المخزون ومتوسط التكلفة لكل صنف/مخزن
-   * بناءً على ترتيب الحركات الزمني.
-   * يرجع خريطة: key = item_id|warehouse_id → { qty, value, avg_cost }
-   */
-  function rebuildInventory() {
-    var map = {};
-    var moves = (cache.stock_movements || []).slice().sort(function (a, b) {
+  var STOCK_IN = { purchase_in: 1, return_from_project: 1, transfer_in: 1, adjust_plus: 1 };
+  var STOCK_OUT = { issue_to_project: 1, transfer_out: 1, return_to_supplier: 1, adjust_minus: 1 };
+
+  function sortMoves(list) {
+    return list.slice().sort(function (a, b) {
       if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+      var ca = a.created_at || "", cb = b.created_at || "";
+      if (ca !== cb) return ca < cb ? -1 : 1;
       return (a.id || "").localeCompare(b.id || "");
     });
+  }
 
-    moves.forEach(function (m) {
+  /**
+   * يعيد حساب رصيد المخزون ومتوسط التكلفة لكل صنف/مخزن (متوسط مرجح متحرك)
+   * - الوارد يحدّث المتوسط، والصادر يخرج بالمتوسط الحالي.
+   * - مرتجع المشروع يعود بتكلفة الصرف الأصلية، والتحويل الوارد بتكلفة التحويل الصادر.
+   */
+  function rebuildInventory() {
+    var map = {}, costs = {};
+    sortMoves(cache.stock_movements || []).forEach(function (m) {
       var key = m.item_id + "|" + (m.warehouse_id || "");
       if (!map[key]) map[key] = { qty: 0, value: 0, avg_cost: 0 };
-
       var s = map[key];
       var qty = num(m.qty);
       var unitCost = num(m.unit_cost);
-      var value = num(m.value) || round2(qty * unitCost);
 
-      if (m.type === "purchase_in" || m.type === "return_from_project" || m.type === "transfer_in" || m.type === "adjust_plus") {
-        // وارد → يحدّث المتوسط
+      if (STOCK_IN[m.type]) {
+        var c = unitCost;
+        if (m.type === "return_from_project" && m.original_issue_id && costs[m.original_issue_id] != null) c = costs[m.original_issue_id];
+        else if (m.type === "transfer_in" && m.ref && costs[m.ref] != null) c = costs[m.ref];
+        var value;
+        if (c !== unitCost) { value = round2(qty * c); m.unit_cost = c; m.value = value; }
+        else value = num(m.value) || round2(qty * c);
         var newQty = s.qty + qty;
         var newValue = s.value + value;
         s.qty = newQty;
         s.value = round2(newValue);
         s.avg_cost = newQty > 0 ? round2(newValue / newQty) : 0;
-      } else if (m.type === "issue_to_project" || m.type === "transfer_out" || m.type === "return_to_supplier" || m.type === "adjust_minus") {
-        // صادر → يستخدم المتوسط الحالي (لا يغيّر المتوسط إلا لو الكمية صفر)
+      } else if (STOCK_OUT[m.type]) {
         var cost = s.avg_cost || unitCost;
         var outValue = round2(qty * cost);
-        // حدّث الحركة نفسها لو محتاجة
         m.unit_cost = cost;
         m.value = outValue;
+        costs[m.id] = cost;
         s.qty = round2(s.qty - qty);
         s.value = round2(s.value - outValue);
-        if (s.qty <= 0.0001) {
-          s.qty = 0;
-          s.value = 0;
-          s.avg_cost = 0;
-        } else {
-          s.avg_cost = round2(s.value / s.qty);
-        }
-      } else if (m.type === "purchase_direct") {
-        // شراء مباشر للمشروع: لا يدخل المخزن، لكن نسجله كتكلفة على المشروع
-        // لا يؤثر على رصيد المخزن
+        if (s.qty <= 0.0001) { s.qty = 0; s.value = 0; s.avg_cost = 0; }
+        else s.avg_cost = round2(s.value / s.qty);
       }
+      // purchase_direct: تكلفة مباشرة على المشروع ولا تدخل المخزن
     });
     return map;
   }
@@ -657,113 +659,70 @@
     return rows;
   }
 
-  // ——— حساب ربحية مشروع ———
-  function calcProjectProfit(projectId) {
-    var inv = rebuildInventory();
-    var materials = 0;
+  // ——— حساب ربحية مشروع (اختياري: نطاق تاريخ {from,to}) ———
+  function inRange(d, r) {
+    if (!r) return true;
+    if (r.from && (!d || d < r.from)) return false;
+    if (r.to && (!d || d > r.to)) return false;
+    return true;
+  }
+
+  function calcProjectProfit(projectId, range) {
+    rebuildInventory();
+    var materials = 0, laborCost = 0, transportCost = 0, storageCost = 0, otherExp = 0, revenue = 0, received = 0;
     (cache.stock_movements || []).forEach(function (m) {
-      if (m.project_id !== projectId) return;
-      if (m.type === "issue_to_project" || m.type === "purchase_direct") {
-        materials += num(m.value);
-      } else if (m.type === "return_from_project") {
-        materials -= num(m.value);
-      }
+      if (m.project_id !== projectId || !inRange(m.date, range)) return;
+      if (m.type === "issue_to_project" || m.type === "purchase_direct") materials += num(m.value);
+      else if (m.type === "return_from_project") materials -= num(m.value);
     });
-
-    var laborCost = 0;
-    (cache.labor || []).forEach(function (l) {
-      if (l.project_id === projectId) laborCost += num(l.total);
-    });
-
-    var transportCost = 0;
-    (cache.transports || []).forEach(function (t) {
-      if (t.project_id === projectId) transportCost += num(t.amount);
-    });
-
-    var storageCost = 0;
-    (cache.storages || []).forEach(function (s) {
-      if (s.project_id === projectId) storageCost += num(s.total);
-    });
-
-    var otherExp = 0;
-    (cache.project_expenses || []).forEach(function (e) {
-      if (e.project_id === projectId) otherExp += num(e.amount);
-    });
-
-    var revenue = 0;
-    (cache.project_invoices || []).forEach(function (inv) {
-      if (inv.project_id === projectId) revenue += num(inv.amount);
-    });
-
-    var received = 0;
-    (cache.customer_receipts || []).forEach(function (r) {
-      if (r.project_id === projectId) received += num(r.amount);
-    });
+    (cache.labor || []).forEach(function (l) { if (l.project_id === projectId && inRange(l.date, range)) laborCost += num(l.total); });
+    (cache.transports || []).forEach(function (t) { if (t.project_id === projectId && inRange(t.date, range)) transportCost += num(t.amount); });
+    (cache.storages || []).forEach(function (s) { if (s.project_id === projectId && inRange(s.date, range)) storageCost += num(s.total); });
+    (cache.project_expenses || []).forEach(function (e) { if (e.project_id === projectId && inRange(e.date, range)) otherExp += num(e.amount); });
+    (cache.project_invoices || []).forEach(function (v) { if (v.project_id === projectId && inRange(v.date, range)) revenue += num(v.amount); });
+    (cache.customer_receipts || []).forEach(function (r) { if (r.project_id === projectId && inRange(r.date, range)) received += num(r.amount); });
 
     var totalCost = round2(materials + laborCost + transportCost + storageCost + otherExp);
     var net = round2(revenue - totalCost);
-    var margin = revenue > 0 ? round2(net / revenue) : 0;
-
+    var margin = revenue > 0 ? net / revenue : 0;
     return {
-      project_id: projectId,
-      revenue: revenue,
-      materials: round2(materials),
-      labor: round2(laborCost),
-      transport: round2(transportCost),
-      storage: round2(storageCost),
-      other: round2(otherExp),
-      total_cost: totalCost,
-      net: net,
-      margin: margin,
-      received: received,
-      receivable: round2(revenue - received)
+      project_id: projectId, revenue: round2(revenue), materials: round2(materials), labor: round2(laborCost),
+      transport: round2(transportCost), storage: round2(storageCost), other: round2(otherExp),
+      total_cost: totalCost, net: net, margin: margin, received: round2(received), receivable: round2(revenue - received)
     };
   }
 
-  function listProjectProfits() {
-    return (cache.projects || []).map(function (p) {
-      var c = calcProjectProfit(p.id);
+  function listProjectProfits(range, filter) {
+    filter = filter || {};
+    return (cache.projects || []).filter(function (p) {
+      return (!filter.project_id || p.id === filter.project_id) && (!filter.engineer_id || p.engineer_id === filter.engineer_id);
+    }).map(function (p) {
+      var c = calcProjectProfit(p.id, range);
       var eng = (cache.engineers || []).find(function (e) { return e.id === p.engineer_id; });
       return Object.assign({
-        project_code: p.code,
-        project_name: p.name,
-        engineer_id: p.engineer_id,
-        engineer_name: eng ? eng.name : "",
-        status: p.status
+        project_code: p.code, project_name: p.name, engineer_id: p.engineer_id,
+        engineer_name: eng ? eng.name : "", status: p.status, expected_end: p.expected_end, start_date: p.start_date
       }, c);
     });
   }
 
   // ——— حسابات الموردين ———
   function calcSupplierBalance(supplierId) {
-    var opening = 0;
-    var sup = (cache.suppliers || []).find(function (s) { return s.id === supplierId; });
-    if (sup) opening = num(sup.opening_balance);
-
-    var purchases = 0;
-    var paidAtPurchase = 0;
+    var sup = (cache.suppliers || []).find(function (x) { return x.id === supplierId; });
+    var opening = sup ? num(sup.opening_balance) : 0;
+    var purchases = 0, paidAtPurchase = 0, payments = 0, returns = 0;
     (cache.purchase_invoices || []).forEach(function (inv) {
-      if (inv.supplier_id === supplierId) {
-        purchases += num(inv.total);
-        paidAtPurchase += num(inv.paid_at_purchase);
-      }
+      if (inv.supplier_id === supplierId) { purchases += num(inv.total); paidAtPurchase += num(inv.paid_at_purchase); }
     });
-
-    var payments = 0;
-    (cache.supplier_payments || []).forEach(function (p) {
-      if (p.supplier_id === supplierId) payments += num(p.amount);
+    (cache.supplier_payments || []).forEach(function (p) { if (p.supplier_id === supplierId) payments += num(p.amount); });
+    rebuildInventory();
+    (cache.stock_movements || []).forEach(function (m) {
+      if (m.type === "return_to_supplier" && m.supplier_id === supplierId) returns += num(m.value);
     });
-
-    // TODO: مرتجعات المورد لاحقاً
-    var due = round2(opening + purchases - paidAtPurchase - payments);
     return {
-      supplier_id: supplierId,
-      opening: opening,
-      purchases: purchases,
-      paid_at_purchase: paidAtPurchase,
-      payments: payments,
-      returns: 0,
-      due: due
+      supplier_id: supplierId, opening: opening, purchases: round2(purchases), paid_at_purchase: round2(paidAtPurchase),
+      payments: round2(payments), returns: round2(returns),
+      due: round2(opening + purchases - paidAtPurchase - payments - returns)
     };
   }
 
@@ -810,6 +769,247 @@
 
     return round2(bal);
   }
+
+  // ——— مساعدات عامة ———
+  function nextCode(table, prefix) {
+    var max = 0, re = new RegExp("^" + prefix + "-(\\d+)$");
+    (cache[table] || []).forEach(function (r) {
+      [r.id, r.code].forEach(function (v) { var m = re.exec(v || ""); if (m) max = Math.max(max, parseInt(m[1], 10)); });
+    });
+    return prefix + "-" + String(max + 1).padStart(4, "0");
+  }
+
+  function refresh(tables) {
+    if (demoMode || !client) return Promise.resolve();
+    return Promise.all(tables.map(fetchAll)).then(function (res) {
+      tables.forEach(function (t, i) { cache[t] = res[i]; });
+    });
+  }
+
+  /** بعد أي تعديل على حركات المخزون: يعيد حساب التكلفة المرجحة ويخزّنها */
+  function stockChanged() {
+    if (demoMode) { rebuildInventory(); saveDemo(); return Promise.resolve(); }
+    return client.rpc("recalc_stock").then(function (r) {
+      if (r.error) return fail(r.error);
+      return refresh(["stock_movements"]);
+    });
+  }
+
+  function calcLine(l) {
+    return round2(num(l.qty) * num(l.unit_price) - num(l.discount) + num(l.tax));
+  }
+
+  function savePurchaseInvoice(inv, lines) {
+    if (!DB.canWrite() && !demoMode) return fail({ code: "42501" });
+    if (!lines || !lines.length) return fail(new Error("أضف صنفاً واحداً على الأقل"));
+    if (!demoMode) {
+      var exists = (cache.purchase_invoices || []).some(function (x) { return x.id === inv.id; });
+      if (exists && !(DB.canEdit() && DB.canDelete())) return fail({ code: "42501" });
+      return client.rpc("save_purchase_invoice", { p_invoice: inv, p_lines: lines }).then(function (r) {
+        if (r.error) return fail(r.error);
+        return refresh(["purchase_invoices", "purchase_details", "stock_movements"]).then(function () { return inv.id; });
+      });
+    }
+    // Demo
+    var oldIds = (cache.purchase_details || []).filter(function (d) { return d.invoice_id === inv.id; }).map(function (d) { return d.id; });
+    cache.stock_movements = (cache.stock_movements || []).filter(function (m) {
+      return !((m.type === "purchase_in" || m.type === "purchase_direct") && oldIds.indexOf(m.ref) >= 0);
+    });
+    cache.purchase_details = (cache.purchase_details || []).filter(function (d) { return d.invoice_id !== inv.id; });
+    var total = 0;
+    lines.forEach(function (l, i) {
+      var did = l.id || (inv.id + "-" + String(i + 1).padStart(2, "0"));
+      var net = calcLine(l);
+      total += net;
+      var proj = l.destination === "project" ? (cache.projects || []).find(function (p) { return p.id === l.project_id; }) : null;
+      cache.purchase_details.push({
+        id: did, invoice_id: inv.id, item_id: l.item_id, warehouse_id: l.destination === "project" ? null : l.warehouse_id,
+        project_id: l.destination === "project" ? l.project_id : null, qty: num(l.qty), unit_price: num(l.unit_price),
+        discount: num(l.discount), tax: num(l.tax), net: net, destination: l.destination || "warehouse"
+      });
+      cache.stock_movements.push({
+        id: "SM-" + did, date: inv.date, type: l.destination === "project" ? "purchase_direct" : "purchase_in", ref: did,
+        item_id: l.item_id, warehouse_id: l.destination === "project" ? null : l.warehouse_id,
+        project_id: l.destination === "project" ? l.project_id : null, engineer_id: proj ? proj.engineer_id : null,
+        qty: num(l.qty), unit_cost: num(l.qty) > 0 ? round2(net / num(l.qty)) : 0, value: net,
+        original_issue_id: null, supplier_id: null, notes: "", created_at: nowISO()
+      });
+    });
+    var paid = num(inv.paid_at_purchase);
+    var row = Object.assign({}, inv, { total: round2(total), balance: round2(total - paid) });
+    var arr = cache.purchase_invoices || (cache.purchase_invoices = []);
+    var idx = arr.findIndex(function (x) { return x.id === inv.id; });
+    if (idx >= 0) arr[idx] = row; else arr.push(row);
+    rebuildInventory();
+    saveDemo();
+    return Promise.resolve(inv.id);
+  }
+
+  function deletePurchaseInvoice(id) {
+    if (!demoMode) {
+      if (!DB.canDelete()) return fail({ code: "42501" });
+      return client.rpc("delete_purchase_invoice", { p_id: id }).then(function (r) {
+        if (r.error) return fail(r.error);
+        return refresh(["purchase_invoices", "purchase_details", "stock_movements"]);
+      });
+    }
+    var ids = (cache.purchase_details || []).filter(function (d) { return d.invoice_id === id; }).map(function (d) { return d.id; });
+    cache.stock_movements = (cache.stock_movements || []).filter(function (m) { return !((m.type === "purchase_in" || m.type === "purchase_direct") && ids.indexOf(m.ref) >= 0); });
+    cache.purchase_details = (cache.purchase_details || []).filter(function (d) { return d.invoice_id !== id; });
+    cache.purchase_invoices = (cache.purchase_invoices || []).filter(function (x) { return x.id !== id; });
+    rebuildInventory();
+    saveDemo();
+    return Promise.resolve();
+  }
+
+  // ——— تقارير وحسابات ———
+  function listEngineerProfits(range) {
+    var rows = listProjectProfits(range);
+    return (cache.engineers || []).map(function (e) {
+      var mine = rows.filter(function (r) { return r.engineer_id === e.id; });
+      var sum = function (k) { return round2(mine.reduce(function (a, r) { return a + r[k]; }, 0)); };
+      var revenue = sum("revenue"), cost = sum("total_cost"), net = round2(revenue - cost);
+      return {
+        engineer_id: e.id, engineer_name: e.name, status: e.status, projects: mine.length,
+        revenue: revenue, total_cost: cost, net: net, margin: revenue > 0 ? net / revenue : 0,
+        received: sum("received"), receivable: sum("receivable")
+      };
+    });
+  }
+
+  function listSupplierAccounts() {
+    return (cache.suppliers || []).map(function (s) {
+      return Object.assign({ supplier_code: s.code, supplier_name: s.name, status: s.status }, calcSupplierBalance(s.id));
+    });
+  }
+
+  /** دفتر الخزينة: كل الحركات الداخلة والخارجة مع رصيد افتتاحي/ختامي للنطاق */
+  function cashLedger(f) {
+    f = f || {};
+    var all = [];
+    function add(date, cb, dir, type, ref, amount, note, sort) {
+      amount = num(amount);
+      if (!cb || !amount) return;
+      all.push({ date: date, cashbox_id: cb, direction: dir, type: type, ref: ref, amount: amount, notes: note || "", sort: sort || "" });
+    }
+    (cache.customer_receipts || []).forEach(function (r) { add(r.date, r.cashbox_id, "in", "مقبوضات عميل", r.code || r.id, r.amount, r.notes, r.created_at); });
+    (cache.supplier_payments || []).forEach(function (r) { add(r.date, r.cashbox_id, "out", "دفعة مورد", r.code || r.id, r.amount, r.notes, r.created_at); });
+    (cache.purchase_invoices || []).forEach(function (r) { add(r.date, r.cashbox_id, "out", "مدفوع عند الشراء", r.code || r.id, r.paid_at_purchase, r.notes, r.created_at); });
+    (cache.project_expenses || []).forEach(function (r) { add(r.date, r.cashbox_id, "out", "مصروف مشروع", r.code || r.id, r.paid, r.description, r.created_at); });
+    (cache.labor || []).forEach(function (r) { add(r.date, r.cashbox_id, "out", "عمالة", r.id, r.paid, r.worker_name, r.created_at); });
+    (cache.transports || []).forEach(function (r) { add(r.date, r.cashbox_id, "out", "نقل", r.code || r.id, r.paid, r.carrier, r.created_at); });
+    (cache.storages || []).forEach(function (r) { add(r.date, r.cashbox_id, "out", "تشوين", r.code || r.id, r.paid, r.place, r.created_at); });
+    (cache.cash_movements || []).forEach(function (r) { add(r.date, r.cashbox_id, r.direction === "in" ? "in" : "out", "حركة يدوية", r.id, r.amount, r.description || r.notes, r.created_at); });
+    all.sort(function (a, b) { return a.date === b.date ? (a.sort < b.sort ? -1 : 1) : (a.date < b.date ? -1 : 1); });
+
+    var boxes = (cache.cashboxes || []).filter(function (c) { return !f.cashbox_id || c.id === f.cashbox_id; });
+    var ids = boxes.map(function (c) { return c.id; });
+    var opening = boxes.reduce(function (a, c) { return a + num(c.opening_balance); }, 0);
+    var rows = [], tin = 0, tout = 0;
+    all.forEach(function (m) {
+      if (ids.indexOf(m.cashbox_id) < 0) return;
+      var signed = m.direction === "in" ? m.amount : -m.amount;
+      if (f.from && m.date < f.from) { opening += signed; return; }
+      if (f.to && m.date > f.to) return;
+      if (f.direction && m.direction !== f.direction) return;
+      rows.push(m);
+      if (m.direction === "in") tin += m.amount; else tout += m.amount;
+    });
+    var run = round2(opening);
+    rows.forEach(function (m) { run = round2(run + (m.direction === "in" ? m.amount : -m.amount)); m.balance = run; });
+    return { rows: rows, opening: round2(opening), total_in: round2(tin), total_out: round2(tout), closing: run };
+  }
+
+  /** كل بنود التكلفة (للرسوم والتوزيع) مع تاريخ ومشروع ونوع */
+  function costEntries() {
+    rebuildInventory();
+    var out = [];
+    (cache.stock_movements || []).forEach(function (m) {
+      if (!m.project_id) return;
+      if (m.type === "issue_to_project" || m.type === "purchase_direct") out.push({ date: m.date, project_id: m.project_id, kind: "materials", amount: num(m.value) });
+      else if (m.type === "return_from_project") out.push({ date: m.date, project_id: m.project_id, kind: "materials", amount: -num(m.value) });
+    });
+    (cache.labor || []).forEach(function (r) { out.push({ date: r.date, project_id: r.project_id, kind: "labor", amount: num(r.total) }); });
+    (cache.transports || []).forEach(function (r) { out.push({ date: r.date, project_id: r.project_id, kind: "transport", amount: num(r.amount) }); });
+    (cache.storages || []).forEach(function (r) { out.push({ date: r.date, project_id: r.project_id, kind: "storage", amount: num(r.total) }); });
+    (cache.project_expenses || []).forEach(function (r) { out.push({ date: r.date, project_id: r.project_id, kind: "other", amount: num(r.amount) }); });
+    return out;
+  }
+
+  var AR_MONTHS = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+
+  /** سلسلة شهرية للإيراد/التكلفة/الربح/التحصيل/التدفق النقدي (آخر n شهر) */
+  function monthlySeries(n, filter) {
+    filter = filter || {};
+    var now = new Date(), keys = [];
+    for (var i = n - 1; i >= 0; i--) {
+      var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      keys.push(d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"));
+    }
+    var byKey = {};
+    keys.forEach(function (k) {
+      byKey[k] = { key: k, label: AR_MONTHS[parseInt(k.slice(5), 10) - 1], revenue: 0, cost: 0, net: 0, received: 0, cash_in: 0, cash_out: 0 };
+    });
+    var allowed = {};
+    (cache.projects || []).forEach(function (p) {
+      if ((!filter.project_id || p.id === filter.project_id) && (!filter.engineer_id || p.engineer_id === filter.engineer_id)) allowed[p.id] = 1;
+    });
+    function slot(date) { return date && byKey[String(date).slice(0, 7)]; }
+    (cache.project_invoices || []).forEach(function (r) { var b = slot(r.date); if (b && allowed[r.project_id]) b.revenue += num(r.amount); });
+    (cache.customer_receipts || []).forEach(function (r) { var b = slot(r.date); if (b && allowed[r.project_id]) b.received += num(r.amount); });
+    costEntries().forEach(function (e) { var b = slot(e.date); if (b && allowed[e.project_id]) b.cost += e.amount; });
+    cashLedger({}).rows.forEach(function (m) { var b = slot(m.date); if (!b) return; if (m.direction === "in") b.cash_in += m.amount; else b.cash_out += m.amount; });
+    return keys.map(function (k) { var b = byKey[k]; b.net = round2(b.revenue - b.cost); b.revenue = round2(b.revenue); b.cost = round2(b.cost); return b; });
+  }
+
+  /** آخر العمليات عبر كل الجداول */
+  function recentActivity(limit) {
+    var out = [];
+    function add(list, kind, label, amountKey, textFn, link) {
+      (cache[list] || []).forEach(function (r) {
+        out.push({ date: r.date, sort: r.created_at || r.date || "", kind: kind, label: label, amount: num(r[amountKey]), text: textFn(r), link: link });
+      });
+    }
+    var P = function (id) { var p = (cache.projects || []).find(function (x) { return x.id === id; }); return p ? p.name : ""; };
+    var S = function (id) { var p = (cache.suppliers || []).find(function (x) { return x.id === id; }); return p ? p.name : ""; };
+    add("project_invoices", "in", "فاتورة مشروع", "amount", function (r) { return P(r.project_id); }, "project-invoices");
+    add("customer_receipts", "in", "مقبوضات", "amount", function (r) { return P(r.project_id); }, "receipts");
+    add("purchase_invoices", "out", "فاتورة مشتريات", "total", function (r) { return S(r.supplier_id); }, "purchases");
+    add("supplier_payments", "out", "دفعة مورد", "amount", function (r) { return S(r.supplier_id); }, "supplier-payments");
+    add("project_expenses", "out", "مصروف", "amount", function (r) { return (r.description || "") + " · " + P(r.project_id); }, "project-expenses");
+    add("labor", "out", "عمالة", "total", function (r) { return (r.worker_name || "") + " · " + P(r.project_id); }, "labor");
+    add("transports", "out", "نقل", "amount", function (r) { return P(r.project_id); }, "transports");
+    add("storages", "out", "تشوين", "total", function (r) { return P(r.project_id); }, "storages");
+    out.sort(function (a, b) { return a.date === b.date ? (a.sort < b.sort ? 1 : -1) : (a.date < b.date ? 1 : -1); });
+    return out.slice(0, limit || 10);
+  }
+
+  /** تنبيهات لوحة التحكم */
+  function dashboardAlerts() {
+    var t = today(), res = [];
+    var profits = listProjectProfits();
+    profits.forEach(function (p) {
+      if (["new", "in_progress", "paused"].indexOf(p.status) >= 0 && p.expected_end && p.expected_end < t) {
+        var days = Math.round((new Date(t) - new Date(p.expected_end)) / 86400000);
+        res.push({ level: "err", type: "late", title: "مشروع متأخر: " + p.project_name, text: "تجاوز موعد التسليم بـ " + days + " يوم", link: "projects" });
+      }
+      if (p.revenue > 0 && p.net < 0) res.push({ level: "err", type: "loss", title: "مشروع خاسر: " + p.project_name, text: "التكلفة تتجاوز الإيراد بـ " + money2(-p.net), link: "profits" });
+      if (["completed", "delivered", "closed"].indexOf(p.status) >= 0 && p.receivable > 0.5) res.push({ level: "warn", type: "recv", title: "مستحق على مشروع منتهي: " + p.project_name, text: "المتبقي على العميل " + money2(p.receivable), link: "receipts" });
+    });
+    listStockBalances().filter(function (r) { return r.low; }).forEach(function (r) {
+      res.push({ level: "warn", type: "stock", title: "مخزون منخفض: " + r.item_name, text: "الرصيد " + r.qty + " (حد الطلب " + r.reorder_level + ")", link: "stock" });
+    });
+    (cache.cashboxes || []).forEach(function (c) {
+      var b = calcCashboxBalance(c.id);
+      if (b < 0) res.push({ level: "err", type: "cash", title: "رصيد خزينة بالسالب: " + c.name, text: money2(b), link: "reports" });
+    });
+    listSupplierAccounts().filter(function (s) { return s.due > 0.5; }).sort(function (a, b) { return b.due - a.due; }).slice(0, 3).forEach(function (s) {
+      res.push({ level: "info", type: "supplier", title: "مستحق للمورد: " + s.supplier_name, text: money2(s.due), link: "supplier-payments" });
+    });
+    return res;
+  }
+  function money2(n) { return Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 2 }); }
+
 
   // ——— واجهة عامة ———
   var DB = {
@@ -884,9 +1084,9 @@
     role: function () { return profile ? profile.role : null; },
     isOwner: function () { return !!profile && profile.role === "owner"; },
     isPlatformAdmin: function () { return !!profile && !!profile.platform_admin; },
-    canWrite: function () { return !!profile && (profile.role === "owner" || profile.role === "staff"); },
-    canEdit: function () { return !!profile && (profile.role === "owner" || (profile.role === "staff" && profile.permissions.indexOf("deny:edit") === -1)); },
-    canDelete: function () { return !!profile && (profile.role === "owner" || (profile.role === "staff" && profile.permissions.indexOf("deny:delete") === -1)); },
+    canWrite: function () { return demoMode || !!profile && (profile.role === "owner" || profile.role === "staff"); },
+    canEdit: function () { return demoMode || !!profile && (profile.role === "owner" || (profile.role === "staff" && profile.permissions.indexOf("deny:edit") === -1)); },
+    canDelete: function () { return demoMode || !!profile && (profile.role === "owner" || (profile.role === "staff" && profile.permissions.indexOf("deny:delete") === -1)); },
 
     // قوائم بسيطة
     list: function (table) {
@@ -926,7 +1126,7 @@
       if (!row.id) row.id = uid();
       var idx = arr.findIndex(function (r) { return r.id === row.id; });
       if (idx >= 0) arr[idx] = Object.assign({}, arr[idx], row);
-      else arr.push(row);
+      else { if (!row.created_at) row.created_at = nowISO(); arr.push(row); }
       saveDemo();
       return Promise.resolve(row);
     },
@@ -954,6 +1154,20 @@
     // موردين وخزينة
     calcSupplierBalance: calcSupplierBalance,
     calcCashboxBalance: calcCashboxBalance,
+    nextCode: nextCode,
+    refresh: refresh,
+    stockChanged: stockChanged,
+    calcLine: calcLine,
+    savePurchaseInvoice: savePurchaseInvoice,
+    deletePurchaseInvoice: deletePurchaseInvoice,
+    listEngineerProfits: listEngineerProfits,
+    listSupplierAccounts: listSupplierAccounts,
+    cashLedger: cashLedger,
+    costEntries: costEntries,
+    monthlySeries: monthlySeries,
+    recentActivity: recentActivity,
+    dashboardAlerts: dashboardAlerts,
+    inRange: inRange,
 
     // لوحة التحكم ملخص
     dashboardSummary: function () {

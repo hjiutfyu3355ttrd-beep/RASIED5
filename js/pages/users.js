@@ -11,7 +11,7 @@
   }
 
   var GROUPS = [
-    ["الأساسية", [["projects", "المشاريع"], ["engineers", "المهندسون"], ["suppliers", "الموردون"], ["items", "الأصناف"], ["warehouses", "المخازن"], ["cashboxes", "الخزائن"]]],
+    ["الأساسية", [["projects", "المشاريع"], ["engineers", "المهندسون"], ["suppliers", "الموردون"], ["items", "الأصناف"], ["warehouses", "المخازن"], ["cashboxes", "الخزائن"], ["expense-types", "أنواع المصروفات"], ["cash-movements", "حركات الخزينة"]]],
     ["المشتريات والمخزون", [["purchases", "فواتير المشتريات"], ["stock", "حركات المخزون"], ["supplier-payments", "مدفوعات الموردين"]]],
     ["المالية", [["project-invoices", "فواتير المشاريع"], ["receipts", "مقبوضات العملاء"], ["project-expenses", "مصروفات المشاريع"], ["labor", "العمالة"], ["transports", "النقل"], ["storages", "التشوين"]]],
     ["التقارير", [["profits", "ربحية المشاريع"], ["reports", "التقارير"], ["settings", "الإعدادات"]]]
@@ -20,7 +20,7 @@
   var PRESETS = {
     "مهندس موقع": ["projects", "stock", "project-expenses", "labor", "transports", "storages"],
     "أمين مخزن": ["items", "warehouses", "stock", "purchases", "suppliers"],
-    "محاسب": ["suppliers", "cashboxes", "purchases", "supplier-payments", "project-invoices", "receipts", "project-expenses", "labor", "transports", "storages", "profits", "reports"]
+    "محاسب": ["suppliers", "cashboxes", "cash-movements", "purchases", "supplier-payments", "project-invoices", "receipts", "project-expenses", "labor", "transports", "storages", "profits", "reports"]
   };
   var DENY = [["deny:delete", "منع الحذف"], ["deny:edit", "منع التعديل"]];
   var ROLE_LABEL = { owner: "مالك", staff: "موظف", viewer: "قراءة فقط" };
