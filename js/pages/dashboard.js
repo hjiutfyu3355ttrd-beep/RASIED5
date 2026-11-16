@@ -1,4 +1,4 @@
-// لوحة التحكم — تصميم مطابق لنظام رصيد (Ledger) مع مؤشرات المشاريع
+// لوحة التحكم — تصميم مطابق لنظام رصيد (Ledger) مع بيانات المشاريع
 (function () {
   "use strict";
   var page = document.getElementById("page"), esc = UI.esc, M = UI.money, O = App.optionsHtml;
@@ -30,11 +30,12 @@
       transport: s("transport"), storage: s("storage"), other: s("other")
     };
   }
-  function delta(cur, prev, goodUp) {
-    if (prev == null || !isFinite(prev) || Math.abs(prev) < 0.01) return "";
-    var d = ((cur - prev) / Math.abs(prev)) * 100, up = d >= 0;
-    var good = goodUp === false ? !up : up;
-    return '<span class="delta ' + (good ? "up" : "down") + '">' + (up ? "▲" : "▼") + " " + Math.abs(d).toFixed(0) + "%</span>";
+  function deltaBadge(cur, prev, goodUp) {
+    if (prev == null || !isFinite(prev) || Math.abs(prev) < 0.01) return '<span class="delta flat">—</span>';
+    var d = Math.round(((cur - prev) / Math.abs(prev)) * 100);
+    if (d === 0) return '<span class="delta flat">0%</span>';
+    var up = d > 0, good = goodUp === false ? !up : up;
+    return '<span class="delta ' + (good ? "up" : "down") + '">' + (up ? "▲" : "▼") + " " + Math.abs(d) + "%</span>";
   }
   function kpi(cfg) {
     return '<div class="kpi-card ' + (cfg.cls || "") + (cfg.spark ? "" : " no-spark") + '">' +
@@ -47,9 +48,9 @@
   function mini(cfg) {
     return '<div class="mini ' + (cfg.cls || "") + '"><span class="kpi-ic">' + (UI.icon[cfg.icon] || "") +
       '</span><div><div class="ml">' + esc(cfg.label) + '</div><div class="mv num">' + cfg.value + "</div>" +
-      (cfg.meta ? '<div class="kmeta" style="font-size:11.5px;color:var(--muted);margin-top:2px">' + cfg.meta + "</div>" : "") + "</div></div>";
+      (cfg.meta ? '<div class="kmeta" style="font-size:11.5px;color:var(--muted);margin-top:2px">' + cfg.meta + "</div>" : "") +
+      "</div></div>";
   }
-
   function greet() {
     var h = new Date().getHours();
     return h < 12 ? "صباح الخير" : h < 18 ? "مساء الخير" : "مساء النور";
@@ -62,7 +63,6 @@
     var series = DB.monthlySeries(R.months, filter);
     var allRows = DB.listProjectProfits(null, filter);
     var recvTotal = allRows.reduce(function (a, r) { return a + (r.receivable || 0); }, 0);
-    var summary = DB.dashboardSummary();
     var sup = DB.listSupplierAccounts();
     var supDue = sup.reduce(function (a, r) { return a + Math.max(r.due || 0, 0); }, 0);
     var late = allRows.filter(function (r) {
@@ -70,92 +70,128 @@
     }).length;
     var active = allRows.filter(function (r) { return r.status === "in_progress"; }).length;
     var company = (DB.getCompany && DB.getCompany()) || {};
-    var todayStr = new Date().toLocaleDateString("ar-EG-u-nu-latn", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+    var todayStr = new Date().toLocaleDateString("ar-EG-u-nu-latn", {
+      weekday: "long", day: "numeric", month: "long", year: "numeric"
+    });
 
-    // —— رأس اللوحة (مطابق لأسلوب رصيد)
-    var head = '<div class="dash-head">' +
-      "<div>" +
-        "<h2><span class=\"live-dot\"></span>" + greet() + "، " + esc(company.name || "مرحباً") + "</h2>" +
-        "<p>" + todayStr +
-          (late ? ' · <b style="color:var(--error)">' + late + " مشروع متأخر</b>" : " · كل المشاريع ضمن الجدول") +
-          (active ? " · " + active + " قيد التنفيذ" : "") +
-        "</p>" +
-      "</div>" +
-      '<div class="row gap wrap" style="align-items:center">' +
-        '<div class="seg" role="tablist" aria-label="الفترة">' +
-          PERIODS.map(function (p) {
-            return '<button type="button" role="tab" data-p="' + p[0] + '" class="' + (st.period === p[0] ? "on" : "") + '">' + p[1] + "</button>";
-          }).join("") +
+    // بيانات المخطط الرئيسي (إيراد vs تكلفة) بنفس أسلوب رصيد
+    var serRev = series.map(function (s) { return { label: s.label, value: s.revenue || 0, t: s.key }; });
+    var serCost = series.map(function (s) { return { label: s.label, value: s.cost || 0, t: s.key }; });
+    var best = serRev.slice().sort(function (a, b) { return b.value - a.value; })[0] || { value: 0, label: "—" };
+    var netPeriod = cur.revenue - cur.cost;
+
+    // —— رأس (مطابق لرصيد)
+    var head =
+      '<div class="dash-head">' +
+        "<div>" +
+          '<h2><span class="live-dot"></span>' + greet() + "، " + esc(company.name || "مرحباً") + "</h2>" +
+          "<p>" + todayStr +
+            (late ? ' · <b style="color:var(--error)">' + late + " مشروع متأخر</b>" : " · كل المشاريع ضمن الجدول") +
+            (active ? " · " + active + " قيد التنفيذ" : "") +
+          "</p>" +
         "</div>" +
-        '<a href="project-invoices.html"><button class="primary" type="button">+ فاتورة مشروع</button></a>' +
-        '<a href="purchases.html"><button type="button">+ مشتريات</button></a>' +
-      "</div></div>";
-
-    // فلاتر المشروع/المهندس تحت الرأس
-    var filters = '<div class="filter-bar" style="margin-top:4px">' +
-      '<div class="field"><label>المشروع</label><select id="fp">' + O(App.opts("projects"), st.project).replace("— اختر —", "كل المشاريع") + "</select></div>" +
-      '<div class="field"><label>المهندس</label><select id="fe">' + O(App.opts("engineers"), st.eng).replace("— اختر —", "كل المهندسين") + "</select></div>" +
+        '<div class="row gap wrap" style="align-items:center">' +
+          '<div class="seg" role="tablist" aria-label="الفترة">' +
+            PERIODS.map(function (p) {
+              return '<button type="button" role="tab" data-p="' + p[0] + '" class="' + (st.period === p[0] ? "on" : "") + '">' + p[1] + "</button>";
+            }).join("") +
+          "</div>" +
+          '<a href="project-invoices.html"><button class="primary" type="button">+ فاتورة مشروع</button></a>' +
+          '<a href="purchases.html"><button type="button">+ مشتريات</button></a>' +
+        "</div>" +
       "</div>";
 
-    // KPI الرئيسية (أسلوب رصيد)
+    var filters =
+      '<div class="filter-bar" style="margin-top:2px">' +
+        '<div class="field"><label>المشروع</label><select id="fp">' +
+          O(App.opts("projects"), st.project).replace("— اختر —", "كل المشاريع") +
+        "</select></div>" +
+        '<div class="field"><label>المهندس</label><select id="fe">' +
+          O(App.opts("engineers"), st.eng).replace("— اختر —", "كل المهندسين") +
+        "</select></div>" +
+      "</div>";
+
+    // KPI
     var kpis = '<div class="stats">' +
       kpi({
         label: "صافي الربح", icon: "profits", value: M(cur.net),
         cls: cur.net < 0 ? "c-red" : "c-green",
-        delta: delta(cur.net, prev && prev.net),
+        delta: deltaBadge(cur.net, prev && prev.net, true),
         meta: prev ? "مقارنة بالفترة السابقة" : "كل الفترات",
         spark: series.map(function (s) { return s.net; })
       }) +
       kpi({
         label: "الإيرادات", icon: "invoices", value: M(cur.revenue),
-        delta: delta(cur.revenue, prev && prev.revenue),
+        delta: deltaBadge(cur.revenue, prev && prev.revenue, true),
         meta: rowsCur.length + " مشروع في الفترة",
         spark: series.map(function (s) { return s.revenue; })
       }) +
       kpi({
         label: "إجمالي التكلفة", icon: "expenses", value: M(cur.cost),
         cls: "c-amber",
-        delta: delta(cur.cost, prev && prev.cost, false),
+        delta: deltaBadge(cur.cost, prev && prev.cost, false),
         meta: "خامات + عمالة + نقل + تشوين + أخرى",
         spark: series.map(function (s) { return s.cost; })
       }) +
       kpi({
         label: "هامش الربح", icon: "profits",
-        value: (cur.margin * 100).toFixed(1) + "%",
-        unit: "",
+        value: (cur.margin * 100).toFixed(1) + "%", unit: "",
         cls: cur.margin < 0.1 ? "c-red" : "c-green",
-        delta: prev ? delta(cur.margin, prev.margin) : "",
+        delta: prev ? deltaBadge(cur.margin, prev.margin, true) : "",
         meta: "صافي ÷ إيراد",
         spark: series.map(function (s) { return s.revenue > 0 ? (s.net / s.revenue) * 100 : 0; })
       }) +
-      "</div>";
+    "</div>";
 
-    // مؤشرات ثانوية
     var minis = '<div class="mini-stats">' +
-      mini({ label: "مستحقات العملاء", icon: "receipts", value: M(recvTotal), cls: recvTotal > 0 ? "c-amber" : "", meta: "على المشاريع" }) +
-      mini({ label: "مستحقات الموردين", icon: "suppliers", value: M(supDue), cls: supDue > 0 ? "c-red" : "", meta: "واجب السداد" }) +
+      mini({ label: "مستحقات العملاء", icon: "receipts", value: M(recvTotal), cls: recvTotal > 0 ? "c-amber" : "" }) +
+      mini({ label: "مستحقات الموردين", icon: "suppliers", value: M(supDue), cls: supDue > 0 ? "c-red" : "" }) +
       mini({ label: "مشاريع نشطة", icon: "projects", value: String(active), meta: late ? late + " متأخر" : "ضمن الجدول" }) +
-      mini({ label: "المحصّل", icon: "receipts", value: M(cur.received), cls: "c-green", meta: "في الفترة المختارة" }) +
+      mini({ label: "المحصّل", icon: "receipts", value: M(cur.received), cls: "c-green" }) +
+    "</div>";
+
+    // —— المخطط الرئيسي + الدونات (تخطيط رصيد dash-grid)
+    var mainCharts =
+      '<div class="dash-grid">' +
+        '<div class="card">' +
+          '<div class="panel-title">' +
+            "<div><h3>الإيرادات مقابل التكلفة</h3>" +
+            '<div class="panel-sub">آخر ' + series.length + " شهراً · الفرق " +
+            '<b dir="ltr" style="color:' + (netPeriod >= 0 ? "var(--success)" : "var(--error)") + '">' +
+            (netPeriod >= 0 ? "+" : "−") + M(Math.abs(netPeriod)) + "</b></div></div>" +
+            '<div class="chart-legend">' +
+              '<span><i style="background:var(--chart-1)"></i>إيراد <b>' + M(cur.revenue) + "</b></span>" +
+              '<span><i style="background:var(--chart-2)"></i>تكلفة <b>' + M(cur.cost) + "</b></span>" +
+            "</div>" +
+          "</div>" +
+          '<div id="c-area"></div>' +
+          '<div class="chart-foot">' +
+            "<div><span>أعلى شهر إيراداً</span><b>" + M(best.value) + "</b><small>" + esc(best.label || "—") + "</small></div>" +
+            "<div><span>متوسط الإيراد الشهري</span><b>" + M(series.length ? Math.round(cur.revenue / series.length) : 0) + "</b><small>خلال " + series.length + " شهراً</small></div>" +
+            "<div><span>هامش الفترة</span><b>" + (cur.margin * 100).toFixed(1) + "%</b><small>صافي " + M(cur.net) + "</small></div>" +
+          "</div>" +
+        "</div>" +
+        '<div class="card">' +
+          '<div class="panel-title"><div><h3>توزيع التكلفة</h3><div class="panel-sub">خامات · عمالة · نقل · تشوين · أخرى</div></div></div>' +
+          '<div id="c-cost"></div>' +
+        "</div>" +
       "</div>";
 
-    // الرسوم والتنبيهات
-    var charts =
-      '<div class="grid-2">' +
-        '<div class="card chart-card"><h3>الإيرادات والتكلفة والربح شهرياً</h3><div id="c-bars"></div></div>' +
-        '<div class="card chart-card"><h3>التدفق النقدي (داخل / خارج)</h3><div id="c-flow"></div></div>' +
-      "</div>" +
-      '<div class="grid-3">' +
-        '<div class="card chart-card"><h3>توزيع التكلفة</h3><div id="c-cost"></div></div>' +
+    // شبكة ثانوية
+    var secondary =
+      '<div class="dash-grid even" style="margin-top:16px">' +
         '<div class="card chart-card"><h3>حالات المشاريع</h3><div id="c-status"></div></div>' +
         '<div class="card chart-card"><h3>أرصدة الخزائن</h3><div id="c-cash"></div></div>' +
       "</div>" +
-      '<div class="grid-3">' +
+      '<div class="dash-grid even" style="margin-top:16px">' +
         '<div class="card chart-card"><h3>أعلى المشاريع ربحاً</h3><div id="c-top"></div></div>' +
-        '<div class="card chart-card"><h3>مستحقات العملاء حسب المشروع</h3><div id="c-recv"></div></div>' +
-        '<div class="card chart-card"><h3>ترتيب المهندسين (صافي الربح)</h3><div id="c-eng"></div></div>' +
+        '<div class="card chart-card"><h3>مستحقات العملاء</h3><div id="c-recv"></div></div>' +
       "</div>" +
-      '<div class="grid-3">' +
-        '<div class="card chart-card"><h3>أعلى مستحقات الموردين</h3><div id="c-sup"></div></div>' +
+      '<div class="dash-grid even" style="margin-top:16px">' +
+        '<div class="card chart-card"><h3>ترتيب المهندسين</h3><div id="c-eng"></div></div>' +
+        '<div class="card chart-card"><h3>مستحقات الموردين</h3><div id="c-sup"></div></div>' +
+      "</div>" +
+      '<div class="dash-grid even" style="margin-top:16px">' +
         '<div class="card chart-card"><h3>تنبيهات تحتاج انتباهك</h3><div id="c-alerts" class="alert-list"></div></div>' +
         '<div class="card chart-card"><h3>آخر العمليات</h3><div id="c-act" class="act-list"></div></div>' +
       "</div>";
@@ -168,50 +204,42 @@
       ["labor", "عمالة", "labor"],
       ["projects", "المشاريع", "projects"]
     ];
-    var quickHtml = '<div class="card chart-card" style="margin-top:4px"><h3>إجراءات سريعة</h3><div class="quick-grid">' +
+    var quickHtml =
+      '<div class="card" style="margin-top:16px"><div class="panel-title"><h3>إجراءات سريعة</h3></div>' +
+      '<div class="quick-grid">' +
       quick.map(function (q) {
         return '<a href="' + q[0] + '.html">' + (UI.icon[q[2]] || "") + "<span>" + q[1] + "</span></a>";
       }).join("") +
       "</div></div>";
 
-    page.innerHTML = '<div class="stack">' + head + filters + kpis + minis + charts + quickHtml + "</div>";
+    page.innerHTML = '<div class="stack">' + head + filters + kpis + minis + mainCharts + secondary + quickHtml + "</div>";
 
     var $ = function (s) { return page.querySelector(s); };
-    var labels = series.map(function (s) { return s.label; });
-    var STC = { new: "#7b88a8", in_progress: "#2a49d6", paused: "#f2a516", completed: "#12b886", delivered: "#6189fb", closed: "#98a3bd" };
+
+    // مخطط المساحة الرئيسي (رصيد)
+    Charts.area($("#c-area"), serRev, serCost);
+
+    // دونات التكلفة
+    Charts.donut($("#c-cost"), [
+      { label: "خامات", value: cur.materials, color: "var(--chart-materials)" },
+      { label: "عمالة", value: cur.labor, color: "var(--chart-labor)" },
+      { label: "نقل", value: cur.transport, color: "var(--chart-transport)" },
+      { label: "تشوين", value: cur.storage, color: "var(--chart-storage)" },
+      { label: "أخرى", value: cur.other, color: "var(--chart-other)" }
+    ], { top: Charts.short(cur.cost), sub: "التكلفة" });
+
+    var STC = { new: "var(--chart-8)", in_progress: "var(--chart-1)", paused: "var(--chart-4)", completed: "var(--chart-5)", delivered: "var(--chart-3)", closed: "var(--chart-2)" };
     var statusCount = {};
     allRows.forEach(function (r) { statusCount[r.status] = (statusCount[r.status] || 0) + 1; });
-
-    Charts.bars($("#c-bars"), {
-      labels: labels,
-      series: [
-        { name: "الإيراد", color: "#2a49d6", values: series.map(function (s) { return s.revenue; }) },
-        { name: "التكلفة", color: "#f2a516", values: series.map(function (s) { return s.cost; }) },
-        { name: "الربح", color: "#12b886", values: series.map(function (s) { return s.net; }) }
-      ]
-    });
-    Charts.line($("#c-flow"), {
-      labels: labels,
-      series: [
-        { name: "داخل", color: "#12b886", values: series.map(function (s) { return s.cash_in; }) },
-        { name: "خارج", color: "#d92d3f", values: series.map(function (s) { return s.cash_out; }) }
-      ]
-    });
-    Charts.donut($("#c-cost"), [
-      { label: "خامات", value: cur.materials, color: "#2a49d6" },
-      { label: "عمالة", value: cur.labor, color: "#f2a516" },
-      { label: "نقل", value: cur.transport, color: "#6189fb" },
-      { label: "تشوين", value: cur.storage, color: "#8a5cf6" },
-      { label: "أخرى", value: cur.other, color: "#e0559b" }
-    ], { top: Charts.short(cur.cost), sub: "التكلفة" });
     Charts.donut($("#c-status"),
       Object.keys(statusCount).map(function (k) {
-        return { label: (App.STATUS_AR && App.STATUS_AR[k]) || k, value: statusCount[k], color: STC[k] || "#7b88a8" };
+        return { label: (App.STATUS_AR && App.STATUS_AR[k]) || k, value: statusCount[k], color: STC[k] || "var(--chart-8)" };
       }),
       { top: String(Object.keys(statusCount).reduce(function (a, k) { return a + statusCount[k]; }, 0)), sub: "مشروع" }
     );
+
     var boxes = DB.list("cashboxes").map(function (c) {
-      return { label: c.name, value: DB.calcCashboxBalance(c.id), color: "#2a49d6" };
+      return { label: c.name, value: DB.calcCashboxBalance(c.id), color: "var(--chart-cash)" };
     });
     Charts.hbars($("#c-cash"), boxes, { fmt: M, keepZero: true });
     Charts.hbars($("#c-top"),
@@ -223,7 +251,7 @@
       allRows.filter(function (r) { return r.receivable > 0.5; })
         .sort(function (a, b) { return b.receivable - a.receivable; }).slice(0, 6)
         .map(function (r) {
-          return { label: r.project_name, value: r.receivable, color: "#f2a516", sub: "محصّل " + M(r.received) + " من " + M(r.revenue) };
+          return { label: r.project_name, value: r.receivable, color: "var(--chart-recv)", sub: "محصّل " + M(r.received) + " من " + M(r.revenue) };
         }),
       { fmt: M }
     );
@@ -233,14 +261,14 @@
     Charts.hbars($("#c-eng"),
       engs.sort(function (a, b) { return b.net - a.net; }).slice(0, 6)
         .map(function (e) {
-          return { label: e.engineer_name, value: e.net, color: "#6189fb", sub: e.projects + " مشروع · هامش " + UI.pct(e.margin) };
+          return { label: e.engineer_name, value: e.net, color: "var(--chart-3)", sub: e.projects + " مشروع · هامش " + UI.pct(e.margin) };
         }),
       { fmt: M }
     );
     Charts.hbars($("#c-sup"),
       sup.filter(function (s) { return s.due > 0.5; })
         .sort(function (a, b) { return b.due - a.due; }).slice(0, 5)
-        .map(function (s) { return { label: s.supplier_name, value: s.due, color: "#d92d3f" }; }),
+        .map(function (s) { return { label: s.supplier_name, value: s.due, color: "var(--chart-sup)" }; }),
       { fmt: M }
     );
 
@@ -254,7 +282,9 @@
     var act = DB.recentActivity(9);
     $("#c-act").innerHTML = act.length
       ? act.map(function (a) {
-          return '<a class="act-row" href="' + a.link + '.html"><div class="a-l"><b>' + esc(a.label) + "</b><small>" + esc(a.text) + " · " + UI.fmtDate(a.date) + '</small></div><b class="num ' + (a.kind === "in" ? "pos-t" : "neg-t") + '">' + (a.kind === "in" ? "+" : "-") + M(a.amount) + "</b></a>";
+          return '<a class="act-row" href="' + a.link + '.html"><div class="a-l"><b>' + esc(a.label) + "</b><small>" +
+            esc(a.text) + " · " + UI.fmtDate(a.date) + '</small></div><b class="num ' +
+            (a.kind === "in" ? "pos-t" : "neg-t") + '">' + (a.kind === "in" ? "+" : "-") + M(a.amount) + "</b></a>";
         }).join("")
       : '<div class="empty compact">لا توجد عمليات بعد</div>';
 

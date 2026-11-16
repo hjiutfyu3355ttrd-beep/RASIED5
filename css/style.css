@@ -42,12 +42,26 @@
   --error:   #d92d3f;  --error-soft:   #fdebed;
   --info:    #2a49d6;  --info-soft:    #eaf0ff;
 
-  --chart-1: #2a49d6;
-  --chart-2: #9aa7c4;
-  --chart-3: #6189fb;
-  --chart-4: #f2a516;
-  --chart-5: #12b886;
-  --chart-6: #c2cbe0;
+  /* لوحة ألوان الرسوم — قابلة للتخصيص */
+  --chart-1: #2a49d6;   /* أساسي / إيراد */
+  --chart-2: #94a3b8;   /* ثانوي / تكلفة */
+  --chart-3: #6189fb;   /* تمييز */
+  --chart-4: #f2a516;   /* تحذير / عمالة */
+  --chart-5: #12b886;   /* نجاح / ربح */
+  --chart-6: #8b5cf6;   /* تشوين */
+  --chart-7: #e0559b;   /* أخرى */
+  --chart-8: #64748b;   /* محايد */
+  --chart-revenue: var(--chart-1);
+  --chart-cost: var(--chart-2);
+  --chart-profit: var(--chart-5);
+  --chart-materials: #2a49d6;
+  --chart-labor: #f2a516;
+  --chart-transport: #6189fb;
+  --chart-storage: #8b5cf6;
+  --chart-other: #e0559b;
+  --chart-recv: #f59e0b;
+  --chart-sup: #ef4444;
+  --chart-cash: #2a49d6;
 
   --sidebar-bg: #0b1226;
   --sidebar-bg-2: #111a38;
@@ -97,9 +111,24 @@ html.dark {
   --info:    #7f9fff;  --info-soft:    rgba(127,159,255,0.12);
 
   --chart-1: #6e92ff;
-  --chart-2: #5c6c93;
+  --chart-2: #94a3b8;
   --chart-3: #93b0ff;
-  --chart-6: #3a4a74;
+  --chart-4: #fbbf24;
+  --chart-5: #34d399;
+  --chart-6: #a78bfa;
+  --chart-7: #f472b6;
+  --chart-8: #64748b;
+  --chart-revenue: var(--chart-1);
+  --chart-cost: var(--chart-2);
+  --chart-profit: var(--chart-5);
+  --chart-materials: #6e92ff;
+  --chart-labor: #fbbf24;
+  --chart-transport: #93b0ff;
+  --chart-storage: #a78bfa;
+  --chart-other: #f472b6;
+  --chart-recv: #fbbf24;
+  --chart-sup: #fb7185;
+  --chart-cash: #6e92ff;
 
   --sidebar-bg: #060a17;
   --sidebar-bg-2: #0a1126;
