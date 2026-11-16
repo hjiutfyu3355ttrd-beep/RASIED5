@@ -72,8 +72,9 @@
   }
 
   /**
-   * مخطط مساحة مزدوج (مثل رصيد: مبيعات vs مشتريات)
+   * مخطط مساحة مزدوج تفاعلي (تلميح + خط عمودي + نقاط)
    * seriesA / seriesB: [{label, value, t?}]
+   * opt: { id, colorA, colorB, fill, nameA, nameB, fmt }
    */
   function area(el, seriesA, seriesB, opt) {
     opt = opt || {};
@@ -81,14 +82,17 @@
     seriesA = seriesA || [];
     seriesB = seriesB || [];
     if (!seriesA.length) return empty(el);
+
     var W = 760, H = 300, pl = 6, pr = 54, pt = 14, pb = 32;
     var iw = W - pl - pr, ih = H - pt - pb, n = seriesA.length;
     var maxV = 0;
-    seriesA.forEach(function (b) { if (b.value > maxV) maxV = b.value; });
-    seriesB.forEach(function (b) { if (b.value > maxV) maxV = b.value; });
+    seriesA.forEach(function (b) { if ((b.value || 0) > maxV) maxV = b.value; });
+    seriesB.forEach(function (b) { if ((b.value || 0) > maxV) maxV = b.value; });
     maxV = niceMax(maxV);
+
     function X(i) { return W - pr - (i * iw / Math.max(n - 1, 1)); }
-    function Y(v) { return pt + ih - (ih * v / maxV); }
+    function Y(v) { return pt + ih - (ih * (v || 0) / maxV); }
+
     var g = "";
     for (var k = 0; k <= 4; k++) {
       var y = pt + ih - (ih * k / 4);
@@ -102,25 +106,98 @@
         g += '<text text-anchor="middle" x="' + X(i) + '" y="' + (H - 8) + '">' + esc(lab) + "</text>";
       }
     });
+
     var sp = seriesA.map(function (b, i) { return [X(i), Y(b.value || 0)]; }).reverse();
     var pp = seriesB.map(function (b, i) { return [X(i), Y(b.value || 0)]; }).reverse();
-    var sl = smooth(sp), pl2 = seriesB.length ? smooth(pp) : "";
+    var sl = smooth(sp);
+    var pl2 = seriesB.length ? smooth(pp) : "";
     var areaPath = sl + " L" + sp[sp.length - 1][0] + "," + (pt + ih) + " L" + sp[0][0] + "," + (pt + ih) + " Z";
     var gid = "gArea" + Math.random().toString(36).slice(2, 7);
-    var colorA = opt.colorA || "var(--chart-1)";
-    var colorB = opt.colorB || "var(--chart-2)";
+    var fillCol = opt.fill || cssVar("--chart-1", "#3d63f0");
+
+    // مناطق لمس شفافة لكل نقطة (من اليمين لليسار حسب RTL)
+    var hit = "";
+    for (var i = 0; i < n; i++) {
+      var w = n > 1 ? iw / (n - 1) : iw;
+      hit += '<rect class="hit" data-i="' + i + '" x="' + (X(i) - w / 2) + '" y="' + pt +
+        '" width="' + w + '" height="' + ih + '" fill="transparent" style="cursor:crosshair"/>';
+    }
+
+    var boxId = opt.id || ("area-" + Math.random().toString(36).slice(2, 7));
     var html =
-      '<div class="chart-box" id="' + (opt.id || "area-chart") + '">' +
+      '<div class="chart-box" id="' + boxId + '">' +
       '<svg viewBox="0 0 ' + W + " " + H + '" role="img">' +
       '<defs><linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1">' +
-      '<stop offset="0" stop-color="' + (opt.fill || cssVar("--chart-1", "#3d63f0")) + '" stop-opacity=".32"/>' +
-      '<stop offset="1" stop-color="' + (opt.fill || cssVar("--chart-1", "#3d63f0")) + '" stop-opacity="0"/></linearGradient></defs>' +
+      '<stop offset="0" stop-color="' + fillCol + '" stop-opacity=".32"/>' +
+      '<stop offset="1" stop-color="' + fillCol + '" stop-opacity="0"/></linearGradient></defs>' +
       g +
       '<path class="area-s" style="fill:url(#' + gid + ')" d="' + areaPath + '"/>' +
       (pl2 ? '<path class="line-p" d="' + pl2 + '"/>' : "") +
       '<path class="line-s" d="' + sl + '"/>' +
-      "</svg></div>";
+      '<line class="cross" id="' + boxId + '-cx" y1="' + pt + '" y2="' + (pt + ih) + '"/>' +
+      '<circle class="dot" id="' + boxId + '-dA" r="6" fill="var(--chart-1)"/>' +
+      (seriesB.length ? '<circle class="dot" id="' + boxId + '-dB" r="5" fill="var(--chart-2)"/>' : "") +
+      hit +
+      "</svg>" +
+      '<div class="chart-tip" id="' + boxId + '-tip"></div>' +
+      "</div>";
     el.innerHTML = html;
+
+    // —— التفاعل
+    var box = document.getElementById(boxId);
+    var tip = document.getElementById(boxId + "-tip");
+    var cx = document.getElementById(boxId + "-cx");
+    var dA = document.getElementById(boxId + "-dA");
+    var dB = document.getElementById(boxId + "-dB");
+    var nameA = opt.nameA || "الإيراد";
+    var nameB = opt.nameB || "التكلفة";
+    var fmt = opt.fmt || full;
+
+    if (!box || !tip) return;
+
+    box.addEventListener("mousemove", function (e) {
+      var hitEl = e.target.closest ? e.target.closest(".hit") : null;
+      if (!hitEl) {
+        box.classList.remove("hover");
+        tip.style.opacity = "0";
+        return;
+      }
+      var i = Number(hitEl.getAttribute("data-i"));
+      if (isNaN(i) || i < 0 || i >= n) return;
+      var x = X(i);
+      var va = seriesA[i] ? (seriesA[i].value || 0) : 0;
+      var vb = seriesB[i] ? (seriesB[i].value || 0) : 0;
+      var lab = (seriesA[i] && seriesA[i].label) || "";
+
+      box.classList.add("hover");
+      if (cx) { cx.setAttribute("x1", x); cx.setAttribute("x2", x); }
+      if (dA) { dA.setAttribute("cx", x); dA.setAttribute("cy", Y(va)); }
+      if (dB) { dB.setAttribute("cx", x); dB.setAttribute("cy", Y(vb)); }
+
+      var body = "<b>" + esc(lab) + "</b>" +
+        '<i style="background:var(--chart-1)"></i>' + esc(nameA) + ": " + fmt(va);
+      if (seriesB.length) {
+        body += "<br><i style=\"background:var(--chart-2)\"></i>" + esc(nameB) + ": " + fmt(vb);
+        var diff = va - vb;
+        body += "<br><span style=\"opacity:.85\">الفرق: " + (diff >= 0 ? "+" : "") + fmt(diff) + "</span>";
+      }
+      tip.innerHTML = body;
+
+      var svg = box.querySelector("svg");
+      var vbox = svg.viewBox.baseVal;
+      var r = box.getBoundingClientRect();
+      var left = (x / vbox.width) * r.width;
+      left = Math.min(Math.max(left, 90), r.width - 90);
+      var topY = (Y(Math.max(va, vb)) / vbox.height) * r.height;
+      tip.style.left = left + "px";
+      tip.style.top = Math.max(12, topY) + "px";
+      tip.style.opacity = "1";
+    });
+
+    box.addEventListener("mouseleave", function () {
+      box.classList.remove("hover");
+      tip.style.opacity = "0";
+    });
   }
 
   // أعمدة عمودية بسيطة (احتياطي)
@@ -203,7 +280,9 @@
     el.innerHTML = '<div class="cv-hbars">' + items.map(function (it, k) {
       var w = Math.max(2, (Math.abs(it.value) / max) * 100);
       var c = it.value < 0 ? "var(--error)" : (it.color || palette()[0]);
-      return '<div class="cv-hb"><div class="cv-hb-top"><span>' + esc(it.label) + '</span><b class="num">' +
+      return '<div class="cv-hb" title="' + esc(it.label) + ': ' + (opt.fmt ? opt.fmt(it.value) : full(it.value)) +
+        (it.sub ? " — " + esc(it.sub) : "") + '">' +
+        '<div class="cv-hb-top"><span>' + esc(it.label) + '</span><b class="num">' +
         (opt.fmt ? opt.fmt(it.value) : full(it.value)) + "</b></div>" +
         '<div class="cv-track"><i style="width:' + w + "%;background:" + c + '"></i></div>' +
         (it.sub ? '<small class="muted">' + esc(it.sub) + "</small>" : "") + "</div>";

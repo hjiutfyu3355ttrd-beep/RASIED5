@@ -325,6 +325,7 @@
         });
       });
     }
+    bindSoftNav();
     document.dispatchEvent(new Event("shell-ready"));
   }
 
@@ -521,17 +522,110 @@
     }
   }
 
-  function loadPageScript(pageKey) {
-    // تجنّب تحميل مزدوج
-    if (window.__pageScriptLoaded === pageKey) return;
+  function loadPageScript(pageKey, force) {
+    // عند التنقل الناعم نعيد تحميل سكربت الصفحة دائماً
+    if (!force && window.__pageScriptLoaded === pageKey) return;
     window.__pageScriptLoaded = pageKey;
+    // أزل سكربتات الصفحات السابقة
+    document.querySelectorAll("script[data-page-script]").forEach(function (s) { s.remove(); });
+    var page = document.getElementById("page");
+    if (page) page.innerHTML = '<div class="empty" style="padding:48px 20px;text-align:center;color:var(--muted)">جارٍ التحميل…</div>';
     var s = document.createElement("script");
-    s.src = "js/pages/" + pageKey + ".js?v=" + ((window.APP_CONFIG && APP_CONFIG.APP_VERSION) || "4");
+    s.src = "js/pages/" + pageKey + ".js?v=" + ((window.APP_CONFIG && APP_CONFIG.APP_VERSION) || "4") + "&t=" + Date.now();
+    s.setAttribute("data-page-script", pageKey);
     s.onerror = function () {
-      var page = document.getElementById("page");
-      if (page) page.innerHTML = '<div class="card pad"><p class="muted">غير متاحة.</p></div>';
+      var pg = document.getElementById("page");
+      if (pg) pg.innerHTML = '<div class="card pad"><p class="muted">الصفحة غير متاحة.</p></div>';
     };
     document.body.appendChild(s);
+  }
+
+  /** تنقّل ناعم: يبقى الشريط الجانبي والعلوي ثابتين دون إعادة تحميل كاملة */
+  function softNavigate(href, opts) {
+    opts = opts || {};
+    if (!href || href.indexOf("login") >= 0 || href.indexOf("http") === 0) {
+      location.href = href;
+      return;
+    }
+    // استخرج مفتاح الصفحة من اسم الملف
+    var file = href.split("?")[0].split("#")[0].split("/").pop() || "dashboard.html";
+    var pageKey = file.replace(/\.html$/, "") || "dashboard";
+    if (pageKey === "index") pageKey = "dashboard";
+
+    // صلاحيات
+    if (window.DB && typeof DB.allowed === "function" && !DB.allowed(pageKey)) {
+      toast("غير مصرّح لك بهذه الصفحة", true);
+      return;
+    }
+
+    saveNavScroll();
+
+    // أغلق القائمة على الموبايل
+    var layout = document.getElementById("layout");
+    if (layout) layout.classList.remove("nav-open");
+
+    // حدّث العنوان والرابط دون إعادة تحميل
+    var title = TITLES[pageKey] || [pageKey, ""];
+    document.title = title[0] + " — نظام المشاريع";
+    document.body.setAttribute("data-page", pageKey);
+    if (!opts.replace) {
+      try { history.pushState({ page: pageKey }, title[0], file); } catch (e) {}
+    } else {
+      try { history.replaceState({ page: pageKey }, title[0], file); } catch (e) {}
+    }
+
+    // حدّث الشيل دون إعادة بنائه
+    if (document.getElementById("layout")) {
+      setActiveNav(pageKey);
+    } else {
+      reconcileShell(pageKey);
+    }
+
+    // حمّل محتوى الصفحة فقط
+    loadPageScript(pageKey, true);
+    restoreNavScroll();
+  }
+
+  function bindSoftNav() {
+    if (window.__softNavBound) return;
+    window.__softNavBound = true;
+
+    document.addEventListener("click", function (e) {
+      // تجاهل المعدّلات (فتح في تبويب جديد)
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      if (e.button !== 0) return;
+      var a = e.target.closest && e.target.closest("a[href]");
+      if (!a) return;
+      var href = a.getAttribute("href") || "";
+      if (!href || href.charAt(0) === "#" || href.indexOf("javascript:") === 0) return;
+      if (a.target === "_blank" || a.hasAttribute("download")) return;
+      // روابط خارجية أو تسجيل الدخول = تنقّل كامل
+      if (/^https?:/i.test(href) || href.indexOf("login") >= 0 || href.indexOf("mailto:") === 0) return;
+      // صفحات داخلية فقط
+      if (!/\.html(\?|$|#)/.test(href) && href.indexOf("/") >= 0 && href.indexOf(".html") < 0) return;
+      if (!/\.html/.test(href) && href !== "index.html") {
+        // قد يكون رابطاً نسبياً لصفحة بدون .html نادراً
+        if (!/^[a-z0-9\-]+$/i.test(href)) return;
+      }
+      // يجب أن يكون الشيل موجوداً
+      if (!document.getElementById("layout")) return;
+
+      e.preventDefault();
+      softNavigate(href);
+    }, true);
+
+    window.addEventListener("popstate", function (ev) {
+      var pageKey = (ev.state && ev.state.page) || (document.body.getAttribute("data-page") || "dashboard");
+      // من المسار الحالي
+      try {
+        var path = location.pathname.split("/").pop() || "dashboard.html";
+        pageKey = path.replace(/\.html$/, "") || "dashboard";
+        if (pageKey === "index") pageKey = "dashboard";
+      } catch (err) {}
+      document.body.setAttribute("data-page", pageKey);
+      if (document.getElementById("layout")) setActiveNav(pageKey);
+      loadPageScript(pageKey, true);
+    });
   }
 
   function modal(opts) {
@@ -579,7 +673,8 @@
       reconcileShell(pageKey);
     },
     loadPageScript: loadPageScript,
-    clearShellCache: clearShellCache
+    clearShellCache: clearShellCache,
+    softNavigate: softNavigate
   };
 
   // رسم فوري قبل انتظار DB
@@ -608,7 +703,12 @@
         if (pg) pg.innerHTML = '<div class="card empty" style="padding:48px 20px"><h3 style="margin:0 0 8px">غير مصرّح لك بهذه الصفحة</h3></div>';
         return;
       }
+      try {
+        var file = (pageKey === "dashboard" ? "dashboard.html" : pageKey + ".html");
+        history.replaceState({ page: pageKey }, document.title, file);
+      } catch (err) {}
       loadPageScript(pageKey);
+      bindSoftNav();
     }).catch(function (e) {
       console.error(e);
       var pg = document.getElementById("page");
