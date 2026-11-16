@@ -3,13 +3,13 @@
    - الخطوط والصور ومكتبة Supabase: الكاش أولاً.
    - لا يعترض أي طلب لـ Supabase أو دومين آخر → البيانات دائماً مباشرة من السيرفر.
    - غيّر VERSION و ?v= في الصفحات عند كل إصدار. */
-const VERSION = "projects-v2";
+const VERSION = "projects-v3";
 const STATIC = VERSION + "-static";
 const RUNTIME = VERSION + "-runtime";
 const PRECACHE = [
   "offline.html",
   "manifest.webmanifest",
-  "css/style.css?v=2",
+  "css/style.css?v=3",
   "assets/fonts/Cairo-Regular.ttf",
   "assets/fonts/Cairo-SemiBold.ttf",
   "assets/fonts/Cairo-Bold.ttf",

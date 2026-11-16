@@ -23,7 +23,8 @@
     "محاسب": ["suppliers", "cashboxes", "purchases", "supplier-payments", "project-invoices", "receipts", "project-expenses", "labor", "transports", "storages", "profits", "reports"]
   };
   var DENY = [["deny:delete", "منع الحذف"], ["deny:edit", "منع التعديل"]];
-  var ROLE_LABEL = { admin: "مدير", staff: "موظف", viewer: "قراءة فقط" };
+  var ROLE_LABEL = { owner: "مالك", staff: "موظف", viewer: "قراءة فقط" };
+  var ASSIGNABLE = ["staff", "viewer"];
 
   var fmt = function (d) { return d ? String(d).slice(0, 10) : "—"; };
 
@@ -43,7 +44,7 @@
     document.getElementById("tbl").innerHTML = '<table><thead><tr><th>المستخدم</th><th>الهاتف</th><th>الدور</th><th>الحالة</th><th>الصفحات</th><th>أيام الاستخدام</th><th>مرات الدخول</th><th>آخر دخول</th><th></th></tr></thead><tbody>' +
       (users.map(function (m) {
         var perms = m.permissions || [];
-        var pages = m.role === "admin" ? "الكل" : perms.filter(function (x) { return x.indexOf("deny:") !== 0; }).length;
+        var pages = m.role === "owner" ? "الكل" : perms.filter(function (x) { return x.indexOf("deny:") !== 0; }).length;
         var restricted = m.role === "staff" && perms.some(function (x) { return x.indexOf("deny:") === 0; });
         return '<tr><td><b>' + esc(m.name || "—") + '</b>' + (m.id === me.id ? ' <span class="badge">أنت</span>' : "") + '</td>' +
           '<td dir="ltr">' + esc(m.phone || m.email || "—") + '</td>' +
@@ -52,7 +53,7 @@
           '<td>' + pages + (restricted ? ' <span class="badge warn">مقيَّد</span>' : "") + '</td>' +
           '<td>' + (m.days_used || 0) + '</td><td>' + (m.login_count || 0) + '</td>' +
           '<td dir="ltr" class="muted">' + fmt(m.last_login_at) + '</td>' +
-          '<td><button class="small" data-id="' + esc(m.id) + '">إدارة</button></td></tr>';
+          '<td>' + (m.role === "owner" ? "" : '<button class="small" data-id="' + esc(m.id) + '">إدارة</button>') + '</td></tr>';
       }).join("") || '<tr><td colspan="9" class="empty">لا يوجد مستخدمون</td></tr>') + '</tbody></table>';
   }
 
@@ -82,7 +83,7 @@
   }
   function val(el, id) { return el.querySelector("#" + id).value; }
   function roleOptions(cur) {
-    return Object.keys(ROLE_LABEL).map(function (r) { return '<option value="' + r + '"' + (r === cur ? " selected" : "") + '>' + ROLE_LABEL[r] + '</option>'; }).join("");
+    return ASSIGNABLE.map(function (r) { return '<option value="' + r + '"' + (r === cur ? " selected" : "") + '>' + ROLE_LABEL[r] + '</option>'; }).join("");
   }
   function guard(btn, fn) {
     btn.disabled = true;
@@ -110,17 +111,16 @@
   }
 
   function openEdit(u) {
-    var self = u.id === DB.getProfile().id;
     var m = UI.modal({
       title: "إدارة: " + esc(u.name || ""),
       body: '<div class="form-grid">' +
         '<div class="field"><label>الاسم</label><input id="n" value="' + esc(u.name || "") + '"></div>' +
-        '<div class="field"><label>الدور</label><select id="role"' + (self ? " disabled" : "") + '>' + roleOptions(u.role) + '</select></div>' +
-        '<div class="field"><label>الحالة</label><select id="st"' + (self ? " disabled" : "") + '><option value="1"' + (u.active ? " selected" : "") + '>نشط</option><option value="0"' + (!u.active ? " selected" : "") + '>موقوف</option></select></div>' +
+        '<div class="field"><label>الدور</label><select id="role">' + roleOptions(u.role) + '</select></div>' +
+        '<div class="field"><label>الحالة</label><select id="st"><option value="1"' + (u.active ? " selected" : "") + '>نشط</option><option value="0"' + (!u.active ? " selected" : "") + '>موقوف</option></select></div>' +
         '<div class="field"><label>ملاحظة الإيقاف</label><input id="note" value="' + esc(u.status_note || "") + '"></div>' +
         permBoxes(u.permissions || []) +
         '<div class="field full"><div class="row gap"><button type="button" class="small" id="rp">تغيير كلمة المرور</button>' +
-        (self ? "" : '<button type="button" class="small danger" id="dl">حذف المستخدم</button>') + '</div></div></div>',
+        '<button type="button" class="small danger" id="dl">حذف المستخدم</button>' + '</div></div></div>',
       actions: [{ label: "إلغاء", cls: "ghost" }, { label: "حفظ", cls: "primary", onClick: function (close) {
         var el = m.el, b = el.querySelector(".modal-foot .primary");
         guard(b, function () {

@@ -335,7 +335,7 @@
 
   // أعمدة مسموح إرسالها إلى Supabase (أي حقل آخر في الصف يُتجاهل)
   var COLS = {
-    company: ["id", "name", "phone", "currency", "address", "inventory_method"],
+    company: ["name", "phone", "currency", "address", "inventory_method"],
     engineers: ["id", "code", "name", "phone", "address", "status", "notes"],
     projects: ["id", "code", "name", "engineer_id", "address", "area", "description", "start_date", "expected_end", "actual_end", "status", "notes"],
     suppliers: ["id", "code", "name", "phone", "address", "activity", "opening_balance", "notes", "status"],
@@ -353,9 +353,13 @@
     labor: ["id", "date", "project_id", "engineer_id", "worker_name", "work_type", "days", "hours", "day_rate", "hour_rate", "total", "paid", "cashbox_id", "payment_status", "notes"],
     transports: ["id", "code", "date", "project_id", "engineer_id", "carrier", "type", "amount", "paid", "cashbox_id", "notes"],
     storages: ["id", "code", "date", "project_id", "engineer_id", "place", "duration", "duration_unit", "unit_price", "total", "paid", "cashbox_id", "notes"],
-    cash_movements: ["id", "date", "cashbox_id", "direction", "amount", "description", "notes"],
-    app_users: ["id", "name", "phone", "role", "active"]
+    cash_movements: ["id", "date", "cashbox_id", "direction", "amount", "description", "notes"]
   };
+  // الجداول التي تُجلب من Supabase (company/settings من جدول companies، والمستخدمون عبر Edge Function)
+  var LIVE_TABLES = ["engineers", "projects", "suppliers", "items", "warehouses", "cashboxes",
+    "expense_types", "purchase_invoices", "purchase_details", "stock_movements",
+    "supplier_payments", "project_invoices", "customer_receipts", "project_expenses",
+    "labor", "transports", "storages", "cash_movements"];
   var DATE_COLS = { date: 1, start_date: 1, expected_end: 1, actual_end: 1 };
 
   /** يجهّز صفاً للإرسال: أعمدة معروفة فقط، والنص الفارغ في التواريخ والمفاتيح الأجنبية → null */
@@ -392,7 +396,7 @@
   function fetchAll(table) {
     var size = 1000;
     function page(from, acc) {
-      return client.from(table).select("*").order("id").range(from, from + size - 1).then(function (r) {
+      return client.from(table).select("*").eq("company_id", profile.company_id).order("id").range(from, from + size - 1).then(function (r) {
         if (r.error) throw r.error;
         var rows = r.data || [];
         acc = acc.concat(rows);
@@ -431,18 +435,16 @@
     };
   }
 
-  function loadAllLive(userId) {
-    var plain = TABLES.filter(function (t) { return t !== "company" && t !== "settings"; });
+  function loadAllLive() {
     return Promise.all([
-      Promise.all(plain.map(fetchAll)),
-      fetchAll("company"),
-      fetchAll("settings")
+      Promise.all(LIVE_TABLES.map(fetchAll)),
+      client.from("companies").select("*").eq("id", profile.company_id).maybeSingle()
     ]).then(function (res) {
-      var data = {};
-      plain.forEach(function (t, i) { data[t] = res[0][i]; });
-      data.company = res[1][0] || null;
-      var main = res[2].filter(function (r) { return r.id === "main"; })[0];
-      data.settings = Object.assign({}, deepClone(SEED.settings), (main && main.data) || {});
+      if (res[1].error) throw res[1].error;
+      var data = {}, co = res[1].data || {};
+      LIVE_TABLES.forEach(function (t, i) { data[t] = res[0][i]; });
+      data.company = co;
+      data.settings = Object.assign({}, deepClone(SEED.settings), co.settings || {});
       return data;
     });
   }
@@ -462,18 +464,24 @@
         if (ev === "SIGNED_OUT") location.replace("login.html");
       });
 
-      return client.from("app_users").select("*").eq("id", session.user.id).maybeSingle().then(function (pr) {
+      return client.from("app_users").select("*, companies(*)").eq("id", session.user.id).maybeSingle().then(function (pr) {
         if (pr.error) throw pr.error;
-        var p = pr.data;
-        if (!p || !p.active) {
-          showBlocked("الحساب موقوف", "تواصل مع مدير النظام.", p && p.status_note);
+        var p = pr.data, co = p && p.companies;
+        if (!p || !co) {
+          showBlocked("الحساب غير مكتمل", "تواصل مع إدارة المنصة.");
+          return never();
+        }
+        if (!p.active || co.status !== "active") {
+          showBlocked("الحساب موقوف", "تواصل مع إدارة المنصة.", p.status_note);
           return never();
         }
         profile = {
-          id: p.id, role: p.role, name: p.name || session.user.email, email: session.user.email,
-          phone: p.phone || "", permissions: Array.isArray(p.permissions) ? p.permissions : []
+          id: p.id, role: p.role, platform_admin: p.platform_role === "admin",
+          name: p.name || session.user.email, email: session.user.email, phone: p.phone || "",
+          company_id: p.company_id, company_name: co.name,
+          permissions: Array.isArray(p.permissions) ? p.permissions : []
         };
-        return loadAllLive(p.id).then(function (data) {
+        return loadAllLive().then(function (data) {
           cache = data;
           DB.ready = true;
           // آخر ظهور + أيام الاستخدام (لا يعطّل الصفحة لو فشل)
@@ -487,28 +495,32 @@
   function liveSave(table, row) {
     if (table === "settings") {
       var merged = Object.assign({}, cache.settings, row);
-      return client.from("settings").upsert({ id: "main", data: merged }, { onConflict: "id" }).select().single()
-        .then(function (r) {
-          if (r.error) return fail(r.error);
-          cache.settings = merged;
-          return merged;
-        });
+      return client.from("companies").update({ settings: merged }).eq("id", profile.company_id).select("id").then(function (r) {
+        if (r.error) return fail(r.error);
+        if (!r.data || !r.data.length) return fail({ code: "42501" });
+        cache.settings = merged;
+        return merged;
+      });
+    }
+    if (table === "company") {
+      var patch = toPayload("company", Object.assign({}, cache.company, row));
+      return client.from("companies").update(patch).eq("id", profile.company_id).select().single().then(function (r) {
+        if (r.error) return fail(r.error);
+        cache.company = r.data;
+        return r.data;
+      });
     }
     if (!COLS[table]) return fail(new Error("جدول غير معروف: " + table));
 
-    var existing = table === "company" ? cache.company : null;
-    if (table === "company") {
-      row = Object.assign({ id: "comp-1" }, existing || {}, row);
-    } else {
-      if (!row.id) row.id = uid();
-      var old = (cache[table] || []).find(function (x) { return x.id === row.id; });
-      if (old) row = Object.assign({}, old, row);
-    }
-    return client.from(table).upsert(toPayload(table, row), { onConflict: "id" }).select().single()
+    if (!row.id) row.id = uid();
+    var old = (cache[table] || []).find(function (x) { return x.id === row.id; });
+    if (old) row = Object.assign({}, old, row);
+    var payload = toPayload(table, row);
+    payload.company_id = profile.company_id;
+    return client.from(table).upsert(payload, { onConflict: "company_id,id" }).select().single()
       .then(function (r) {
         if (r.error) return fail(r.error);
         var saved = r.data;
-        if (table === "company") { cache.company = saved; return saved; }
         var arr = cache[table] || (cache[table] = []);
         var idx = arr.findIndex(function (x) { return x.id === saved.id; });
         if (idx >= 0) arr[idx] = saved; else arr.push(saved);
@@ -518,7 +530,7 @@
 
   function liveRemove(table, id) {
     if (!COLS[table] || table === "company") return fail(new Error("لا يمكن الحذف من: " + table));
-    return client.from(table).delete().eq("id", id).select("id").then(function (r) {
+    return client.from(table).delete().eq("company_id", profile.company_id).eq("id", id).select("id").then(function (r) {
       if (r.error) return fail(r.error);
       if (!r.data || !r.data.length) return fail(new Error("لم يتم الحذف (لا تملك الصلاحية أو السجل غير موجود)"));
       cache[table] = (cache[table] || []).filter(function (x) { return x.id !== id; });
@@ -852,7 +864,8 @@
       if (demoMode) return true;
       if (!profile) return false;
       if (pageKey === "dashboard" || pageKey === "login") return true;
-      if (profile.role === "admin") return true;
+      if (pageKey === "admin") return !!profile.platform_admin;
+      if (profile.role === "owner") return true;
       if (pageKey === "users") return false;
       return profile.permissions.indexOf(pageKey) !== -1;
     },
@@ -865,14 +878,15 @@
     /** إعادة تحميل كل البيانات من السيرفر (Live فقط) */
     reload: function () {
       if (demoMode || !profile) return Promise.resolve();
-      return loadAllLive(profile.id).then(function (data) { cache = data; });
+      return loadAllLive().then(function (data) { cache = data; });
     },
 
     role: function () { return profile ? profile.role : null; },
-    isAdmin: function () { return profile && profile.role === "admin"; },
-    canWrite: function () { return !!profile && (profile.role === "admin" || profile.role === "staff"); },
-    canEdit: function () { return !!profile && (profile.role === "admin" || (profile.role === "staff" && profile.permissions.indexOf("deny:edit") === -1)); },
-    canDelete: function () { return !!profile && (profile.role === "admin" || (profile.role === "staff" && profile.permissions.indexOf("deny:delete") === -1)); },
+    isOwner: function () { return !!profile && profile.role === "owner"; },
+    isPlatformAdmin: function () { return !!profile && !!profile.platform_admin; },
+    canWrite: function () { return !!profile && (profile.role === "owner" || profile.role === "staff"); },
+    canEdit: function () { return !!profile && (profile.role === "owner" || (profile.role === "staff" && profile.permissions.indexOf("deny:edit") === -1)); },
+    canDelete: function () { return !!profile && (profile.role === "owner" || (profile.role === "staff" && profile.permissions.indexOf("deny:delete") === -1)); },
 
     // قوائم بسيطة
     list: function (table) {

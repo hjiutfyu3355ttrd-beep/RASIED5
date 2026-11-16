@@ -12,7 +12,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <title>تسجيل الدخول — نظام المشاريع</title>
   <link rel="icon" href="assets/img/icon-192.png" type="image/png" />
-  <link rel="stylesheet" href="css/style.css?v=2" />
+  <link rel="stylesheet" href="css/style.css?v=3" />
 </head>
 <body class="auth-body" data-page="login">
   <div class="auth-shell">
@@ -22,13 +22,13 @@
 
     <main class="auth-main">
       <div class="auth-card card">
-        <div class="seg auth-tabs" role="tablist" id="tabs" hidden>
+        <div class="seg auth-tabs" role="tablist" id="tabs">
           <button type="button" role="tab" id="tab-login" class="on">تسجيل الدخول</button>
-          <button type="button" role="tab" id="tab-setup">حساب المدير</button>
+          <button type="button" role="tab" id="tab-reg">حساب جديد</button>
         </div>
 
         <form id="form-login" class="stack" novalidate>
-          <div><h2 class="auth-h">تسجيل الدخول</h2></div>
+          <h2 class="auth-h">تسجيل الدخول</h2>
           <div class="field"><label for="l-id">رقم الهاتف أو البريد الإلكتروني</label><input id="l-id" type="text" inputmode="tel" dir="ltr" autocomplete="username" required /></div>
           <div class="field"><label for="l-pass">كلمة المرور</label><div class="pw"><input id="l-pass" type="password" dir="ltr" autocomplete="current-password" required /><button type="button" class="ghost pw-eye" data-eye="l-pass" aria-label="إظهار">👁</button></div></div>
           <div style="text-align:end;margin-top:-6px"><button type="button" class="ghost small" id="forgot">نسيت كلمة المرور؟</button></div>
@@ -36,23 +36,24 @@
           <button class="primary auth-submit" type="submit" id="btn-login">دخول</button>
         </form>
 
-        <form id="form-setup" class="stack" novalidate hidden>
-          <div><h2 class="auth-h">إنشاء حساب المدير</h2></div>
-          <div class="field"><label for="s-name">اسمك</label><input id="s-name" autocomplete="name" required /></div>
-          <div class="field"><label for="s-phone">رقم الهاتف</label><input id="s-phone" type="tel" inputmode="tel" dir="ltr" autocomplete="username" required /></div>
-          <div class="field"><label for="s-pass">كلمة المرور</label><div class="pw"><input id="s-pass" type="password" dir="ltr" autocomplete="new-password" minlength="6" required /><button type="button" class="ghost pw-eye" data-eye="s-pass" aria-label="إظهار">👁</button></div></div>
-          <div class="auth-err" id="err-setup" role="alert" hidden></div>
-          <button class="primary auth-submit" type="submit" id="btn-setup">إنشاء حساب المدير</button>
+        <form id="form-reg" class="stack" novalidate hidden>
+          <h2 class="auth-h">إنشاء حساب</h2>
+          <div class="field"><label for="r-name">اسمك</label><input id="r-name" autocomplete="name" required /></div>
+          <div class="field"><label for="r-co">اسم الشركة</label><input id="r-co" autocomplete="organization" required /></div>
+          <div class="field"><label for="r-phone">رقم الهاتف</label><input id="r-phone" type="tel" inputmode="tel" dir="ltr" autocomplete="username" required /></div>
+          <div class="field"><label for="r-pass">كلمة المرور</label><div class="pw"><input id="r-pass" type="password" dir="ltr" autocomplete="new-password" minlength="6" required /><button type="button" class="ghost pw-eye" data-eye="r-pass" aria-label="إظهار">👁</button></div></div>
+          <div class="auth-err" id="err-reg" role="alert" hidden></div>
+          <button class="primary auth-submit" type="submit" id="btn-reg">إنشاء الحساب</button>
         </form>
       </div>
     </main>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-  <script src="js/config.js?v=2"></script>
-  <script src="js/db.js?v=2"></script>
-  <script src="js/ui.js?v=2"></script>
-  <script src="js/login.js?v=2"></script>
-  <script defer src="js/pwa.js?v=2"></script>
+  <script src="js/config.js?v=3"></script>
+  <script src="js/db.js?v=3"></script>
+  <script src="js/ui.js?v=3"></script>
+  <script src="js/login.js?v=3"></script>
+  <script defer src="js/pwa.js?v=3"></script>
 </body>
 </html>

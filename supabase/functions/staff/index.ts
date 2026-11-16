@@ -1,4 +1,4 @@
-// staff — إدارة المستخدمين (للمدير فقط). verify_jwt = true
+// staff — مالك الشركة يدير موظفي شركته فقط. verify_jwt = true
 // actions: list · create · update · reset_password · delete
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -11,7 +11,7 @@ const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
 
 const EMAIL_DOMAIN = "phone.projectserp.app";
-const ROLES = ["admin", "staff", "viewer"];
+const ROLES = ["staff", "viewer"];
 
 function normPhone(v: string) {
   let d = String(v || "").replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x660)).replace(/\D/g, "");
@@ -29,44 +29,38 @@ Deno.serve(async (req) => {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  // هوية المتصل + التأكد أنه مدير مفعّل
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   const { data: u } = await admin.auth.getUser(token);
   if (!u?.user) return json({ error: "unauthorized", message: "سجّل الدخول أولاً" }, 401);
-  const { data: me } = await admin.from("app_users").select("id,role,active").eq("id", u.user.id).maybeSingle();
-  if (!me || me.role !== "admin" || !me.active) return json({ error: "forbidden", message: "هذه العملية للمدير فقط" }, 403);
+  const { data: me } = await admin.from("app_users").select("id,role,active,company_id").eq("id", u.user.id).maybeSingle();
+  if (!me || me.role !== "owner" || !me.active) return json({ error: "forbidden", message: "هذه العملية لمالك الشركة فقط" }, 403);
+  const { data: co } = await admin.from("companies").select("status").eq("id", me.company_id).maybeSingle();
+  if (!co || co.status !== "active") return json({ error: "forbidden", message: "الشركة موقوفة" }, 403);
 
   let body: any;
   try { body = await req.json(); } catch { return json({ error: "bad_json" }, 400); }
   const action = String(body.action || "");
 
-  // عدد المديرين المفعّلين غير المستخدم المستهدف (لمنع قفل النظام)
-  async function otherActiveAdmins(exceptId: string) {
-    const { count } = await admin.from("app_users").select("id", { count: "exact", head: true })
-      .eq("role", "admin").eq("active", true).neq("id", exceptId);
-    return count ?? 0;
-  }
+  // المستخدم المستهدف يجب أن يكون موظفاً (غير مالك) في نفس الشركة
   async function target(id: string) {
-    const { data } = await admin.from("app_users").select("id,role,active").eq("id", id).maybeSingle();
-    return data;
+    const { data } = await admin.from("app_users").select("id,role,active,company_id").eq("id", id).maybeSingle();
+    return data && data.company_id === me.company_id && data.role !== "owner" ? data : null;
   }
 
   if (action === "list") {
-    const { data: users, error } = await admin.from("app_users").select("*").order("created_at", { ascending: false });
+    const { data: users, error } = await admin.from("app_users").select("*").eq("company_id", me.company_id).order("created_at", { ascending: false });
     if (error) return json({ error: "failed", message: "تعذّر تحميل المستخدمين" }, 500);
-    const { data: days } = await admin.from("activity_days").select("user_id");
+    const ids = (users || []).map((x: any) => x.id);
+    const { data: days } = await admin.from("activity_days").select("user_id").in("user_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
     const used: Record<string, number> = {};
     (days || []).forEach((d: any) => { used[d.user_id] = (used[d.user_id] || 0) + 1; });
-    const emails: Record<string, string> = {};
-    const { data: list } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-    (list?.users || []).forEach((x: any) => { emails[x.id] = x.email; });
-    return json({ users: (users || []).map((x: any) => ({ ...x, days_used: used[x.id] || 0, email: emails[x.id] || null })) });
+    return json({ users: (users || []).map((x: any) => ({ ...x, days_used: used[x.id] || 0 })) });
   }
 
   if (action === "create") {
     const phone = normPhone(body.phone);
     const password = String(body.password || "");
-    const name = String(body.full_name || "").trim();
+    const name = String(body.full_name || "").trim().slice(0, 80);
     const role = String(body.role || "staff");
     if (phone.length < 8 || phone.length > 15) return json({ error: "invalid_phone", message: "رقم الهاتف غير صحيح" }, 400);
     if (password.length < 6) return json({ error: "weak_password", message: "كلمة المرور 6 أحرف على الأقل" }, 400);
@@ -80,40 +74,30 @@ Deno.serve(async (req) => {
       const dup = /already|registered|exists/i.test(cErr?.message || "");
       return json({ error: dup ? "phone_exists" : "create_failed", message: dup ? "هذا الرقم مسجّل بالفعل" : "تعذّر إنشاء الحساب" }, dup ? 409 : 400);
     }
-    // الـ trigger أنشأ صفاً غير مفعّل؛ نكمله ونفعّله
-    const { error: uErr } = await admin.from("app_users").upsert({
-      id: c.user.id, phone, name, role, active: true, status_note: null,
-      permissions: cleanPerms(body.permissions), created_by: me.id,
+    const { error: rErr } = await admin.rpc("create_staff", {
+      p_uid: c.user.id, p_company: me.company_id, p_phone: phone, p_name: name, p_role: role, p_perms: cleanPerms(body.permissions), p_by: me.id,
     });
-    if (uErr) { await admin.auth.admin.deleteUser(c.user.id); return json({ error: "create_failed", message: "تعذّر إنشاء الحساب" }, 400); }
+    if (rErr) { await admin.auth.admin.deleteUser(c.user.id); return json({ error: "create_failed", message: "تعذّر إنشاء الحساب" }, 400); }
     return json({ ok: true });
   }
 
-  if (action === "update") {
+  if (action === "update" || action === "reset_password" || action === "delete") {
     const id = String(body.user_id || "");
     const t = await target(id);
     if (!t) return json({ error: "not_found", message: "المستخدم غير موجود" }, 404);
-    const role = body.role === undefined ? t.role : String(body.role);
-    const active = body.active === undefined ? t.active : !!body.active;
-    if (!ROLES.includes(role)) return json({ error: "invalid_role", message: "الدور غير صحيح" }, 400);
-    if (id === me.id && (role !== "admin" || !active)) return json({ error: "self", message: "لا يمكنك تغيير دورك أو إيقاف حسابك" }, 400);
-    if (t.role === "admin" && (role !== "admin" || !active) && (await otherActiveAdmins(id)) < 1)
-      return json({ error: "last_admin", message: "لا يمكن إزالة آخر مدير مفعّل" }, 400);
-    const patch: Record<string, unknown> = { role, active, status_note: active ? null : (String(body.status_note || "").slice(0, 200) || null) };
-    if (body.full_name !== undefined && String(body.full_name).trim().length >= 2) patch.name = String(body.full_name).trim();
-    if (body.permissions !== undefined) patch.permissions = cleanPerms(body.permissions);
-    const { error } = await admin.from("app_users").update(patch).eq("id", id);
-    return error ? json({ error: "failed", message: "تعذّر الحفظ" }, 400) : json({ ok: true });
-  }
 
-  if (action === "reset_password" || action === "delete") {
-    const id = String(body.user_id || "");
-    const t = await target(id);
-    if (!t) return json({ error: "not_found", message: "المستخدم غير موجود" }, 404);
+    if (action === "update") {
+      const role = body.role === undefined ? undefined : String(body.role);
+      if (role !== undefined && !ROLES.includes(role)) return json({ error: "invalid_role", message: "الدور غير صحيح" }, 400);
+      const active = body.active === undefined ? t.active : !!body.active;
+      const patch: Record<string, unknown> = { active, status_note: active ? null : (String(body.status_note || "").slice(0, 200) || null) };
+      if (role !== undefined) patch.role = role;
+      if (body.full_name !== undefined && String(body.full_name).trim().length >= 2) patch.name = String(body.full_name).trim().slice(0, 80);
+      if (body.permissions !== undefined) patch.permissions = cleanPerms(body.permissions);
+      const { error } = await admin.from("app_users").update(patch).eq("id", id);
+      return error ? json({ error: "failed", message: "تعذّر الحفظ" }, 400) : json({ ok: true });
+    }
     if (action === "delete") {
-      if (id === me.id) return json({ error: "self", message: "لا يمكنك حذف حسابك" }, 400);
-      if (t.role === "admin" && t.active && (await otherActiveAdmins(id)) < 1)
-        return json({ error: "last_admin", message: "لا يمكن حذف آخر مدير مفعّل" }, 400);
       const { error } = await admin.auth.admin.deleteUser(id);
       return error ? json({ error: "failed", message: "تعذّر الحذف" }, 400) : json({ ok: true });
     }
