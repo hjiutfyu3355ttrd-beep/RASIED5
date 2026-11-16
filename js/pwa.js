@@ -30,7 +30,7 @@
     d.id = "pwa-banner"; d.className = "pwa-banner"; d.setAttribute("role", "dialog"); d.setAttribute("aria-label", "تثبيت التطبيق");
     d.innerHTML =
       '<img src="assets/img/icon-192.png" alt="" width="46" height="46" />' +
-      '<div class="pwa-banner-text"><b>تثبيت تطبيق نظام المشاريع</b><span>افتحه من الشاشة الرئيسية مثل أي تطبيق</span></div>' +
+      '<div class="pwa-banner-text"><b>تثبيت التطبيق</b></div>' +
       '<div class="pwa-banner-actions"><button type="button" class="pwa-yes">تثبيت</button><button type="button" class="pwa-no">لاحقًا</button></div>';
     d.querySelector(".pwa-yes").onclick = function () { window.PWA.install(); };
     d.querySelector(".pwa-no").onclick = function () {
@@ -47,7 +47,7 @@
   });
   window.addEventListener("appinstalled", function () {
     deferred = null; showBtn(false); removeBanner();
-    if (window.UI && UI.toast) UI.toast("تم تثبيت التطبيق ✓");
+    if (window.UI && UI.toast) UI.toast("تم تثبيت التطبيق");
   });
 
   function iosTip() {

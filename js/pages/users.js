@@ -6,7 +6,7 @@
   var users = [];
 
   if (DB.demoMode) {
-    page.innerHTML = '<div class="card empty" style="padding:40px">إدارة المستخدمين متاحة في النسخة السحابية بعد تسجيل الدخول.</div>';
+    page.innerHTML = '<div class="card empty" style="padding:40px">غير متاح في الوضع التجريبي.</div>';
     return;
   }
 
@@ -22,7 +22,7 @@
     "أمين مخزن": ["items", "warehouses", "stock", "purchases", "suppliers"],
     "محاسب": ["suppliers", "cashboxes", "purchases", "supplier-payments", "project-invoices", "receipts", "project-expenses", "labor", "transports", "storages", "profits", "reports"]
   };
-  var DENY = [["deny:delete", "منع الحذف (يُفرض في قاعدة البيانات)"], ["deny:edit", "منع تعديل السجلات المحفوظة (يُفرض في قاعدة البيانات)"]];
+  var DENY = [["deny:delete", "منع الحذف"], ["deny:edit", "منع التعديل"]];
   var ROLE_LABEL = { admin: "مدير", staff: "موظف", viewer: "قراءة فقط" };
 
   var fmt = function (d) { return d ? String(d).slice(0, 10) : "—"; };
@@ -32,7 +32,6 @@
       <div class="page-toolbar">
         <div>
           <h2 style="margin:0">المستخدمون</h2>
-          <p class="muted" style="margin:4px 0 0;font-size:12px">أضف مستخدميك برقم الهاتف وكلمة المرور وحدّد الصفحات المسموحة لكل واحد. صفحة المستخدمين للمدير فقط.</p>
         </div>
         <button type="button" class="primary" id="b-add">+ مستخدم جديد</button>
       </div>
@@ -58,7 +57,7 @@
   }
 
   function permBoxes(sel) {
-    return '<div class="field full"><label>الصفحات المسموحة <span class="muted" style="font-weight:400">(الرئيسية متاحة دائماً — لا تنطبق على المدير)</span></label>' +
+    return '<div class="field full"><label>الصفحات المسموحة</label>' +
       '<div class="row gap" style="flex-wrap:wrap;margin-bottom:8px">' +
       Object.keys(PRESETS).map(function (k) { return '<button type="button" class="small ghost" data-preset="' + esc(k) + '">' + esc(k) + '</button>'; }).join("") +
       '<button type="button" class="small ghost" data-preset="__all">الكل</button><button type="button" class="small ghost" data-preset="__none">لا شيء</button></div>' +
@@ -66,7 +65,7 @@
         return '<div class="perm-group"><div class="muted">' + g[0] + '</div><div class="perm-row">' +
           g[1].map(function (p) { return '<label><input type="checkbox" data-p="' + p[0] + '"' + (sel.indexOf(p[0]) !== -1 ? " checked" : "") + '>' + p[1] + '</label>'; }).join("") + '</div></div>';
       }).join("") + '</div>' +
-      '<div class="field full"><label>قيود إضافية <span class="muted" style="font-weight:400">(للموظف فقط)</span></label><div class="perm-row" style="flex-direction:column;gap:6px">' +
+      '<div class="field full"><label>قيود</label><div class="perm-row" style="flex-direction:column;gap:6px">' +
       DENY.map(function (d) { return '<label><input type="checkbox" data-d="' + d[0] + '"' + (sel.indexOf(d[0]) !== -1 ? " checked" : "") + '>' + d[1] + '</label>'; }).join("") + '</div></div>';
   }
   function bindPresets(el) {
@@ -95,8 +94,8 @@
       title: "مستخدم جديد",
       body: '<div class="form-grid">' +
         '<div class="field"><label>الاسم</label><input id="n"></div>' +
-        '<div class="field"><label>رقم الهاتف (يسجّل به الدخول)</label><input id="ph" dir="ltr" inputmode="tel"></div>' +
-        '<div class="field"><label>كلمة المرور (6 أحرف على الأقل)</label><input id="pw" dir="ltr" autocomplete="new-password"></div>' +
+        '<div class="field"><label>رقم الهاتف</label><input id="ph" dir="ltr" inputmode="tel"></div>' +
+        '<div class="field"><label>كلمة المرور</label><input id="pw" dir="ltr" autocomplete="new-password"></div>' +
         '<div class="field"><label>الدور</label><select id="role">' + roleOptions("staff") + '</select></div>' +
         permBoxes(["projects"]) + '</div>',
       actions: [{ label: "إلغاء", cls: "ghost" }, { label: "إضافة", cls: "primary", onClick: function (close) {
@@ -118,7 +117,7 @@
         '<div class="field"><label>الاسم</label><input id="n" value="' + esc(u.name || "") + '"></div>' +
         '<div class="field"><label>الدور</label><select id="role"' + (self ? " disabled" : "") + '>' + roleOptions(u.role) + '</select></div>' +
         '<div class="field"><label>الحالة</label><select id="st"' + (self ? " disabled" : "") + '><option value="1"' + (u.active ? " selected" : "") + '>نشط</option><option value="0"' + (!u.active ? " selected" : "") + '>موقوف</option></select></div>' +
-        '<div class="field"><label>ملاحظة الإيقاف (تظهر للمستخدم)</label><input id="note" value="' + esc(u.status_note || "") + '"></div>' +
+        '<div class="field"><label>ملاحظة الإيقاف</label><input id="note" value="' + esc(u.status_note || "") + '"></div>' +
         permBoxes(u.permissions || []) +
         '<div class="field full"><div class="row gap"><button type="button" class="small" id="rp">تغيير كلمة المرور</button>' +
         (self ? "" : '<button type="button" class="small danger" id="dl">حذف المستخدم</button>') + '</div></div></div>',
@@ -132,13 +131,13 @@
     });
     bindPresets(m.el);
     m.el.querySelector("#rp").onclick = function () {
-      var pw = prompt("كلمة المرور الجديدة (6 أحرف على الأقل):");
+      var pw = prompt("كلمة المرور الجديدة:");
       if (!pw) return;
       DB.fn("staff", { action: "reset_password", user_id: u.id, password: pw }).then(function () { UI.toast("تم تغيير كلمة المرور"); }, function (e) { UI.toast(e.message, true); });
     };
     var dl = m.el.querySelector("#dl");
     if (dl) dl.onclick = function () {
-      if (!confirm("حذف المستخدم نهائياً؟ لن يستطيع الدخول مرة أخرى (بيانات النظام تبقى كما هي).")) return;
+      if (!confirm("حذف المستخدم نهائياً؟")) return;
       DB.fn("staff", { action: "delete", user_id: u.id }).then(function () { UI.toast("تم الحذف"); m.close(); return load(); }, function (e) { UI.toast(e.message, true); });
     };
   }

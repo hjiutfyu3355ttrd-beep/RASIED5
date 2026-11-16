@@ -60,7 +60,7 @@
         engineer_id: "ENG-0001",
         address: "مدينة نصر",
         area: "القاهرة",
-        description: "مشروع افتراضي لأغراض العرض",
+        description: "",
         start_date: "2026-10-03",
         expected_end: "2027-01-01",
         actual_end: null,
@@ -77,7 +77,7 @@
         address: "القاهرة",
         activity: "خامات تشطيبات",
         opening_balance: 0,
-        notes: "بيانات افتراضية",
+        notes: "",
         status: "active"
       }
     ],
@@ -91,14 +91,14 @@
         default_purchase_price: 53,
         reorder_level: 10,
         preferred_supplier_id: "SUP-0001",
-        notes: "بيانات افتراضية"
+        notes: ""
       }
     ],
     warehouses: [
       { id: "WH-0001", code: "WH-0001", name: "المخزن الرئيسي", location: "القاهرة", notes: "" }
     ],
     cashboxes: [
-      { id: "CB-0001", code: "CB-0001", name: "الخزينة الرئيسية", opening_balance: 10000, notes: "رصيد افتتاحي افتراضي" }
+      { id: "CB-0001", code: "CB-0001", name: "الخزينة الرئيسية", opening_balance: 10000, notes: "" }
     ],
     expense_types: [
       { id: "EXT-001", code: "EXT-001", name: "مصروفات أخرى", category: "تشغيل" },
@@ -121,7 +121,7 @@
         cashbox_id: null,
         total: 530,
         balance: 530,
-        notes: "افتراضي؛ تاريخ الشراء = تاريخ استلام المخزون"
+        notes: ""
       },
       {
         id: "PUR-0002",
@@ -229,21 +229,21 @@
     ],
     // مدفوعات موردين
     supplier_payments: [
-      { id: "PAY-0001", code: "PAY-0001", date: "2026-10-03", supplier_id: "SUP-0001", amount: 400, method: "نقدي", cashbox_id: "CB-0001", notes: "سداد افتراضي" },
-      { id: "PAY-0002", code: "PAY-0002", date: "2026-10-03", supplier_id: "SUP-0001", amount: 330, method: "نقدي", cashbox_id: "CB-0001", notes: "سداد افتراضي" },
-      { id: "PAY-0003", code: "PAY-0003", date: "2026-10-03", supplier_id: "SUP-0001", amount: 330, method: "نقدي", cashbox_id: "CB-0001", notes: "سداد افتراضي" }
+      { id: "PAY-0001", code: "PAY-0001", date: "2026-10-03", supplier_id: "SUP-0001", amount: 400, method: "نقدي", cashbox_id: "CB-0001", notes: "" },
+      { id: "PAY-0002", code: "PAY-0002", date: "2026-10-03", supplier_id: "SUP-0001", amount: 330, method: "نقدي", cashbox_id: "CB-0001", notes: "" },
+      { id: "PAY-0003", code: "PAY-0003", date: "2026-10-03", supplier_id: "SUP-0001", amount: 330, method: "نقدي", cashbox_id: "CB-0001", notes: "" }
     ],
     // فواتير مشاريع (إيراد)
     project_invoices: [
-      { id: "INV-0001", code: "INV-0001", date: "2026-10-03", project_id: "PRJ-0001", engineer_id: "ENG-0001", amount: 20000, notes: "قيمة المشروع للاختبار" }
+      { id: "INV-0001", code: "INV-0001", date: "2026-10-03", project_id: "PRJ-0001", engineer_id: "ENG-0001", amount: 20000, notes: "" }
     ],
     // مقبوضات عملاء
     customer_receipts: [
-      { id: "REC-0001", code: "REC-0001", date: "2026-10-03", project_id: "PRJ-0001", engineer_id: "ENG-0001", amount: 10000, method: "نقدي", cashbox_id: "CB-0001", notes: "تحصيل افتراضي" }
+      { id: "REC-0001", code: "REC-0001", date: "2026-10-03", project_id: "PRJ-0001", engineer_id: "ENG-0001", amount: 10000, method: "نقدي", cashbox_id: "CB-0001", notes: "" }
     ],
     // مصروفات مشاريع
     project_expenses: [
-      { id: "EXP-0001", code: "EXP-0001", date: "2026-10-03", project_id: "PRJ-0001", engineer_id: "ENG-0001", expense_type_id: "EXT-001", description: "مصروفات أخرى اختبارية", amount: 500, paid: 500, method: "نقدي", cashbox_id: "CB-0001", notes: "مصروف افتراضي" }
+      { id: "EXP-0001", code: "EXP-0001", date: "2026-10-03", project_id: "PRJ-0001", engineer_id: "ENG-0001", expense_type_id: "EXT-001", description: "مصروفات", amount: 500, paid: 500, method: "نقدي", cashbox_id: "CB-0001", notes: "" }
     ],
     // عمالة
     labor: [
@@ -252,7 +252,7 @@
         date: "2026-10-03",
         project_id: "PRJ-0001",
         engineer_id: "ENG-0001",
-        worker_name: "عامل افتراضي",
+        worker_name: "عامل",
         work_type: "تشطيبات",
         days: 5,
         hours: 0,
@@ -273,12 +273,12 @@
         date: "2026-10-03",
         project_id: "PRJ-0001",
         engineer_id: "ENG-0001",
-        carrier: "ناقل افتراضي",
+        carrier: "ناقل",
         type: "نقل مواد",
         amount: 1000,
         paid: 1000,
         cashbox_id: "CB-0001",
-        notes: "بيانات افتراضية"
+        notes: ""
       }
     ],
     // تشوين
@@ -296,7 +296,7 @@
         total: 500,
         paid: 500,
         cashbox_id: "CB-0001",
-        notes: "بيانات افتراضية"
+        notes: ""
       }
     ],
     // حركات خزينة يدوية
@@ -466,7 +466,7 @@
         if (pr.error) throw pr.error;
         var p = pr.data;
         if (!p || !p.active) {
-          showBlocked("الحساب موقوف", "تم إيقاف هذا الحساب أو لم يُفعَّل بعد. تواصل مع مدير النظام.", p && p.status_note);
+          showBlocked("الحساب موقوف", "تواصل مع مدير النظام.", p && p.status_note);
           return never();
         }
         profile = {

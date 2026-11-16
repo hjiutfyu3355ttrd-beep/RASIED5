@@ -69,8 +69,7 @@
     var ov = document.createElement("div");
     ov.className = "modal-overlay";
     ov.innerHTML = '<div class="modal card"><h3 style="margin-top:0">نسيت كلمة المرور؟</h3>' +
-      '<p>اطلب من <b>مدير النظام</b> تغيير كلمة مرورك من صفحة «المستخدمون» ← «تغيير كلمة المرور»، ثم ادخل بالكلمة الجديدة.</p>' +
-      '<p class="muted">إن كنت أنت المدير الوحيد وفقدت كلمة المرور، يمكن إعادة تعيينها من لوحة Supabase ← Authentication ← Users.</p>' +
+      '<p>تواصل مع مدير النظام لإعادة تعيين كلمة المرور.</p>' +
       (wa ? '<p><a class="button primary" target="_blank" rel="noopener" href="https://wa.me/' + wa + '">تواصل عبر واتساب</a></p>' : "") +
       '<div class="row gap" style="justify-content:flex-end"><button type="button" class="ghost" id="fg-close">إغلاق</button></div></div>';
     document.body.appendChild(ov);

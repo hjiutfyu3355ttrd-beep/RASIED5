@@ -17,7 +17,7 @@
 
     DB.listStockBalances().forEach(function (r) {
       if (r.low) add({ key: "low:" + r.item_id + "|" + r.warehouse_id, level: "warn", page: "stock",
-        title: "مخزون منخفض: " + r.item_name, text: "الرصيد " + UI.num(r.qty) + " (حد إعادة الطلب " + UI.num(r.reorder_level) + ") — " + r.warehouse_name });
+        title: "مخزون منخفض: " + r.item_name, text: "الرصيد " + UI.num(r.qty) + " (الحد الأدنى " + UI.num(r.reorder_level) + ") — " + r.warehouse_name });
     });
 
     (DB.list("projects") || []).forEach(function (p) {
@@ -55,14 +55,14 @@
     var seen = load("pm_notif_seen");
     var perm = ("Notification" in window) ? Notification.permission : "unsupported";
     var devBtn = perm === "default" ? '<button type="button" class="small" id="notif-enable">تفعيل إشعارات الجهاز</button>' :
-      perm === "granted" ? '<span class="muted" style="font-size:12px">إشعارات الجهاز مفعّلة ✓</span>' :
-      perm === "denied" ? '<span class="muted" style="font-size:12px">إشعارات الجهاز محظورة من المتصفح</span>' : "";
+      perm === "granted" ? '<span class="muted" style="font-size:12px">إشعارات الجهاز مفعّلة</span>' :
+      perm === "denied" ? '<span class="muted" style="font-size:12px">إشعارات الجهاز محظورة</span>' : "";
     panel.innerHTML = '<div class="notif-head"><b>التنبيهات</b>' + devBtn + '</div>' +
       '<div class="notif-list">' + (list.length ? list.map(function (a) {
         return '<a class="notif-item ' + a.level + (seen.indexOf(a.key) === -1 ? " new" : "") + '" href="' + esc(PAGE_OF[a.page] || a.page) + '.html">' +
           '<span class="notif-dot"></span><span class="notif-body"><b>' + esc(a.title) + '</b><span>' + esc(a.text) + '</span></span>' +
           '<span class="badge ' + (a.level === "danger" ? "err" : a.level === "warn" ? "warn" : "") + '">' + LABEL[a.level] + '</span></a>';
-      }).join("") : '<div class="empty" style="padding:24px 12px">لا توجد تنبيهات — كل شيء سليم ✓</div>') + '</div>';
+      }).join("") : '<div class="empty" style="padding:24px 12px">لا توجد تنبيهات</div>') + '</div>';
     var en = document.getElementById("notif-enable");
     if (en) en.onclick = function () {
       Notification.requestPermission().then(function () { refresh(true); });

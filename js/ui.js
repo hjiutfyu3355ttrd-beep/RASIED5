@@ -113,15 +113,15 @@
   ];
 
   var TITLES = {
-    dashboard: ["لوحة التحكم", "ملخص شامل للمشاريع والمالية والمخزون"],
-    projects: ["المشاريع", "إدارة مشاريع التشطيبات"],
+    dashboard: ["لوحة التحكم", ""],
+    projects: ["المشاريع", ""],
     engineers: ["المهندسون", ""],
     suppliers: ["الموردون", ""],
     items: ["الأصناف", ""],
     warehouses: ["المخازن", ""],
     cashboxes: ["الخزائن", ""],
     purchases: ["فواتير المشتريات", ""],
-    stock: ["حركات المخزون", "متوسط تكلفة مرجح متحرك"],
+    stock: ["حركات المخزون", ""],
     "supplier-payments": ["مدفوعات الموردين", ""],
     "project-invoices": ["فواتير المشاريع", ""],
     receipts: ["مقبوضات العملاء", ""],
@@ -129,9 +129,9 @@
     labor: ["العمالة", ""],
     transports: ["النقل", ""],
     storages: ["التشوين", ""],
-    profits: ["ربحية المشاريع", "تكلفة وخامات وعمالة وصافي"],
+    profits: ["ربحية المشاريع", ""],
     reports: ["التقارير", ""],
-    users: ["المستخدمون", "حسابات الدخول والصلاحيات"],
+    users: ["المستخدمون", ""],
     settings: ["الإعدادات", ""]
   };
 
@@ -215,7 +215,7 @@
     s.src = "js/pages/" + pageKey + ".js?v=" + ((window.APP_CONFIG && APP_CONFIG.APP_VERSION) || "1");
     s.onerror = function () {
       var page = document.getElementById("page");
-      if (page) page.innerHTML = '<div class="card pad"><p class="muted">الصفحة قيد التطوير — قريباً.</p></div>';
+      if (page) page.innerHTML = '<div class="card pad"><p class="muted">غير متاحة.</p></div>';
     };
     document.body.appendChild(s);
   }
@@ -278,7 +278,7 @@
       var pageKey = document.body.getAttribute("data-page") || "dashboard";
       if (!DB.allowed(pageKey)) {
         var pg = document.getElementById("page");
-        if (pg) pg.innerHTML = '<div class="card empty" style="padding:48px 20px"><h3 style="margin:0 0 8px">غير مصرّح لك بهذه الصفحة</h3><p class="muted" style="margin:0">تواصل مع مدير النظام لإضافة الصلاحية.</p></div>';
+        if (pg) pg.innerHTML = '<div class="card empty" style="padding:48px 20px"><h3 style="margin:0 0 8px">غير مصرّح لك بهذه الصفحة</h3></div>';
         return;
       }
       loadPageScript(pageKey);

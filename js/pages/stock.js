@@ -36,7 +36,7 @@
 
   page.innerHTML = UI.html`
     <div class="card">
-      <div class="card-head"><h3>أرصدة المخزون (متوسط مرجح متحرك)</h3></div>
+      <div class="card-head"><h3>أرصدة المخزون</h3></div>
       <div class="table-wrap">
         <table class="table">
           <thead>
