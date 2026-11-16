@@ -262,10 +262,11 @@ a > button { pointer-events: none; }
 .nav-sec { margin-bottom: 2px; }
 .nav-group {
   width: 100%; display: flex; align-items: center; gap: 11px; padding: 7px 10px; margin: 0; border: 0; border-radius: 11px;
-  background: none; color: var(--sidebar-text); font: inherit; font-weight: 700; font-size: 13.5px; text-align: start; cursor: pointer;
+  background: transparent; color: var(--sidebar-text); font: inherit; font-weight: 700; font-size: 13.5px; text-align: start; cursor: pointer;
+  box-shadow: none; min-height: 0; letter-spacing: normal;
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.nav-group:hover { background: var(--sidebar-hover); }
+.nav-group:hover { background: var(--sidebar-hover); box-shadow: none; }
 .nav-group:focus-visible { outline: 2px solid var(--brand-400); outline-offset: -2px; }
 .nav-group .nav-ic { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 10px; color: var(--sidebar-muted); transition: all var(--dur) var(--ease); }
 .nav-group .nav-ic svg { width: 18px; height: 18px; }
@@ -1558,12 +1559,12 @@ button.primary:active {
   transform: translateY(0);
   box-shadow: 0 1px 0 rgba(255,255,255,0.12) inset, 0 2px 6px rgba(42,73,214,0.25);
 }
-button:not(.primary):not(.ghost):not(.danger) {
+button:not(.primary):not(.ghost):not(.danger):not(.nav-group) {
   background: var(--surface);
   border: 1px solid var(--border-strong);
   box-shadow: var(--shadow-xs);
 }
-button:not(.primary):not(.ghost):not(.danger):hover {
+button:not(.primary):not(.ghost):not(.danger):not(.nav-group):hover {
   background: var(--surface);
   border-color: var(--primary-muted);
   box-shadow: var(--shadow);
